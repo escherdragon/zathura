@@ -1068,8 +1068,10 @@ open_file(char* path, char* password)
     }
   }
 
-  /* set window title */
-  gtk_window_set_title(Zathura.UI.window, basename(file));
+  /* set window title to filename */
+  char * file_basename;
+  file_basename = basename(file);
+  gtk_window_set_title(Zathura.UI.window, file_basename);
 
   /* show document */
   set_page(start_page);
@@ -1599,9 +1601,10 @@ sc_scroll(Argument* argument)
 
   gdouble view_size  = gtk_adjustment_get_page_size(adjustment);
   gdouble value      = gtk_adjustment_get_value(adjustment);
+  gdouble page       = gtk_adjustment_get_page_increment(adjustment);
   gdouble max        = gtk_adjustment_get_upper(adjustment) - view_size;
 
-  if(argument->n == UP && value == 0)
+  if( (argument->n == UP || argument->n == PREVIOUS) && value == 0 )
   {
     Argument arg;
     arg.n = PREVIOUS;
@@ -1609,7 +1612,7 @@ sc_scroll(Argument* argument)
     arg.n = BOTTOM;
     sc_scroll(&arg);
   }
-  else if(argument->n == DOWN && value == max)
+  else if( (argument->n == DOWN || argument->n == NEXT) && value == max )
   {
     Argument arg;
     arg.n = NEXT;
@@ -1621,6 +1624,10 @@ sc_scroll(Argument* argument)
     gtk_adjustment_set_value(adjustment, 0);
   else if(argument->n == BOTTOM)
     gtk_adjustment_set_value(adjustment, max);
+  else if(argument->n == PREVIOUS)
+    gtk_adjustment_set_value(adjustment, (value - page) < 0 ? 0 : (value - page));
+  else if(argument->n == NEXT)
+    gtk_adjustment_set_value(adjustment, (value + page) > max ? max : (value + page));
   else
     gtk_adjustment_set_value(adjustment, (value + SCROLL_STEP) > max ? max : (value + SCROLL_STEP));
 
@@ -2341,7 +2348,6 @@ cmd_close(int argc, char** argv)
   free(Zathura.PDF.pages);
   g_object_unref(Zathura.PDF.document);
   g_free(Zathura.State.pages);
-  gtk_window_set_title(Zathura.UI.window, "zathura");
 
   Zathura.State.pages         = g_strdup_printf("");
   Zathura.State.filename      = (char*) DEFAULT_TEXT;
@@ -3675,6 +3681,7 @@ int main(int argc, char* argv[])
   update_status();
 
   gtk_widget_show_all(GTK_WIDGET(Zathura.UI.window));
+  gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
 
   gdk_threads_enter();
   gtk_main();
