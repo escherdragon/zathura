@@ -135,6 +135,12 @@ InputbarShortcut inputbar_shortcuts[] = {
   {GDK_CONTROL_MASK,   GDK_w,             isc_string_manipulation,   { DELETE_LAST_WORD } },
 };
 
+Shortcut mouse_shortcuts[] = {
+  /* mask, button, function,    mode,   argument */
+  {0,      1,      sc_navigate, FULLSCREEN, { NEXT } },
+  {0,      3,      sc_navigate, FULLSCREEN, { PREVIOUS } },
+};
+
 /* mouse settings */
 MouseScrollEvent mouse_scroll_events[] = {
   /* direction,      function,  argument */

@@ -3513,6 +3513,18 @@ cb_view_button_pressed(GtkWidget* widget, GdkEventButton* event, gpointer data)
   if(!Zathura.PDF.document)
     return FALSE;
 
+  int i;
+  for(i = 0; i < LENGTH(mouse_shortcuts); i++)
+  {
+    if (event->button == mouse_shortcuts[i].key &&
+      (((event->state & mouse_shortcuts[i].mask) == mouse_shortcuts[i].mask) || mouse_shortcuts[i].mask == 0)
+      && (Zathura.Global.mode == mouse_shortcuts[i].mode || mouse_shortcuts[i].mode == -1))
+    {
+      mouse_shortcuts[i].function(&(mouse_shortcuts[i].argument));
+      return TRUE;
+    }
+  }
+
   /* clean page */
   draw(Zathura.PDF.page_number);
   g_static_mutex_lock(&(Zathura.Lock.select_lock));
