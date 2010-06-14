@@ -30,6 +30,18 @@ Scroll downwards
 .B l
 Scroll to the right
 .TP
+.B Space
+Jump one page down, or to the top of the current page
+.TP
+.B b
+Jump one page up, or to the bottom of the current page
+.TP
+.B H
+Jump to the top of the current page
+.TP
+.B L
+Jump to the bottom of the current page
+.TP
 .B /
 Search forwards
 .TP
@@ -84,11 +96,17 @@ Change to visual mode
 .B :
 Focus inputbar
 .TP
-.B Backspace
-Delete last character in the buffer
-.TP
 .B F5
 Toggle fullscreen mode
+.TP
+.B Mouse Button 1
+In fullscreen mode: move to next page.
+.TP
+.B Mouse Button 3
+In fulscreen mode: move to previous page.
+.TP
+.B Backspace
+Delete last character in the buffer
 .TP
 .B ^n
 Toggle statusbar visibility
@@ -99,7 +117,7 @@ Toggle inputbar visibility
 .B Esc | ^c
 Abort
 .TP
-.B ^q
+.B q or d
 Quit the program
 .SS Index commands
 .TP

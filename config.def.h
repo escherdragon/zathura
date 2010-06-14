@@ -20,7 +20,7 @@ static const char BM_PAGE_ENTRY[]  = "page";
 static const char BM_PAGE_OFFSET[] = "offset";
 
 /* look */
-static const char font[]                   = "monospace normal 9";
+static const char font[]                   = "dejavu sans mono 10";
 static const char default_bgcolor[]        = "#000000";
 static const char default_fgcolor[]        = "#DDDDDD";
 static const char inputbar_bgcolor[]       = "#141414";
@@ -66,7 +66,6 @@ Shortcut shortcuts[] = {
   {GDK_CONTROL_MASK,   GDK_n,             sc_toggle_statusbar,  NORMAL,     {0} },
   {GDK_CONTROL_MASK,   GDK_m,             sc_toggle_inputbar,   NORMAL,     {0} },
   {0,                  GDK_F5,            sc_toggle_fullscreen, NORMAL,     {0} },
-  {GDK_CONTROL_MASK,   GDK_q,             sc_quit,              -1,         {0} },
   {0,                  GDK_q,             sc_quit,              -1,         {0} },
   {0,                  GDK_d,             sc_quit,              -1,         {0} },
   {GDK_CONTROL_MASK,   GDK_c,             sc_abort,             -1,         {0} },
@@ -103,6 +102,8 @@ Shortcut shortcuts[] = {
   {0,                  GDK_Up,            sc_scroll,            NORMAL,     { UP } },
   {0,                  GDK_Down,          sc_scroll,            NORMAL,     { DOWN } },
   {0,                  GDK_Right,         sc_scroll,            NORMAL,     { RIGHT } },
+  {0,                  GDK_H,             sc_scroll,            NORMAL,     { TOP } },
+  {0,                  GDK_L,             sc_scroll,            NORMAL,     { BOTTOM } },
   {0,                  GDK_n,             sc_search,            NORMAL,     { FORWARD } },
   {0,                  GDK_N,             sc_search,            NORMAL,     { BACKWARD } },
   {0,                  GDK_a,             sc_adjust_window,     NORMAL,     { ADJUST_BESTFIT } },
@@ -135,6 +136,7 @@ InputbarShortcut inputbar_shortcuts[] = {
   {GDK_CONTROL_MASK,   GDK_w,             isc_string_manipulation,   { DELETE_LAST_WORD } },
 };
 
+/* mouse navigation */
 Shortcut mouse_shortcuts[] = {
   /* mask, button, function,    mode,   argument */
   {0,      1,      sc_navigate, FULLSCREEN, { NEXT } },
