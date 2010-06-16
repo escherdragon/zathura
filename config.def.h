@@ -20,7 +20,7 @@ static const char BM_PAGE_ENTRY[]  = "page";
 static const char BM_PAGE_OFFSET[] = "offset";
 
 /* look */
-static const char font[]                   = "dejavu sans mono 10";
+static const char font[]                   = "dejavu sans mono 8";
 static const char default_bgcolor[]        = "#000000";
 static const char default_fgcolor[]        = "#DDDDDD";
 static const char inputbar_bgcolor[]       = "#141414";

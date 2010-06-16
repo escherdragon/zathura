@@ -149,7 +149,7 @@ struct
 {
   struct
   {
-    GtkWindow         *window;
+    GtkWidget         *window;
     GtkBox            *box;
     GtkBox            *continuous;
     GtkScrolledWindow *view;
@@ -161,6 +161,7 @@ struct
     GtkWidget         *information;
     GtkWidget         *drawing_area;
     GtkWidget         *document;
+    GdkNativeWindow    embed;
   } UI;
 
   struct
@@ -227,7 +228,6 @@ struct
   struct
   {
     GFileMonitor* monitor;
-    GFile* file;
   } FileMonitor;
 
   struct
@@ -289,6 +289,7 @@ void add_marker(int);
 void build_index(GtkTreeModel*, GtkTreeIter*, PopplerIndexIter*);
 void change_mode(int);
 void calculate_offset(GtkWidget*, double*, double*);
+void close_file(gboolean);
 void enter_password();
 void highlight_result(int, PopplerRectangle*);
 void draw(int);
@@ -470,10 +471,14 @@ init_zathura()
   Zathura.Search.draw    = FALSE;
 
   Zathura.FileMonitor.monitor = NULL;
-  Zathura.FileMonitor.file    = NULL;
+
+  /* window */
+  if(Zathura.UI.embed)
+    Zathura.UI.window = gtk_plug_new(Zathura.UI.embed);
+  else
+    Zathura.UI.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
   /* UI */
-  Zathura.UI.window            = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
   Zathura.UI.box               = GTK_BOX(gtk_vbox_new(FALSE, 0));
   Zathura.UI.continuous        = GTK_BOX(gtk_vbox_new(FALSE, 0));
   Zathura.UI.view              = GTK_SCROLLED_WINDOW(gtk_scrolled_window_new(NULL, NULL));
@@ -485,10 +490,10 @@ init_zathura()
   Zathura.UI.document            = gtk_event_box_new();
 
   /* window */
-  gtk_window_set_title(Zathura.UI.window, "zathura");
+  gtk_window_set_title(GTK_WINDOW(Zathura.UI.window), "zathura");
   GdkGeometry hints = { 1, 1 };
-  gtk_window_set_geometry_hints(Zathura.UI.window, NULL, &hints, GDK_HINT_MIN_SIZE);
-  gtk_window_set_default_size(Zathura.UI.window, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+  gtk_window_set_geometry_hints(GTK_WINDOW(Zathura.UI.window), NULL, &hints, GDK_HINT_MIN_SIZE);
+  gtk_window_set_default_size(GTK_WINDOW(Zathura.UI.window), DEFAULT_WIDTH, DEFAULT_HEIGHT);
   g_signal_connect(G_OBJECT(Zathura.UI.window), "destroy", G_CALLBACK(cb_destroy), NULL);
 
   /* box */
@@ -822,6 +827,96 @@ calculate_offset(GtkWidget* widget, double* offset_x, double* offset_y)
 }
 
 void
+close_file(gboolean keep_monitor)
+{
+  if(!Zathura.PDF.document)
+    return;
+
+  /* clean up pages */
+  int i;
+  for(i = 0; i < Zathura.PDF.number_of_pages; i++)
+  {
+    Page* current_page = Zathura.PDF.pages[i];
+    g_object_unref(current_page->page);
+  }
+
+  /* save bookmarks */
+  if(Zathura.Bookmarks.data)
+  {
+    /* set current page */
+    g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
+        BM_PAGE_ENTRY, Zathura.PDF.page_number);
+
+    /* set page offset */
+    g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
+        BM_PAGE_OFFSET, Zathura.PDF.page_offset);
+
+    /* save bookmarks */
+    int i;
+    for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+      g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
+          Zathura.Bookmarks.bookmarks[i].id, Zathura.Bookmarks.bookmarks[i].page);
+
+    /* convert file and save it */
+    gchar* bookmarks = g_key_file_to_data(Zathura.Bookmarks.data, NULL, NULL);
+    g_file_set_contents(Zathura.Bookmarks.file, bookmarks, -1, NULL);
+    g_free(bookmarks);
+  }
+
+  /* inotify */
+  if(!keep_monitor)
+  {
+    g_object_unref(Zathura.FileMonitor.monitor);
+    Zathura.FileMonitor.monitor = NULL;
+  }
+
+  /* reset values */
+  free(Zathura.PDF.pages);
+  g_object_unref(Zathura.PDF.document);
+  g_free(Zathura.State.pages);
+  gtk_window_set_title(GTK_WINDOW(Zathura.UI.window), "zathura");
+
+  Zathura.State.pages         = g_strdup_printf("");
+  Zathura.State.filename      = (char*) DEFAULT_TEXT;
+
+  g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
+  Zathura.PDF.document        = NULL;
+  if(!keep_monitor)
+  {
+    Zathura.PDF.file            = NULL;
+    Zathura.PDF.password        = NULL;
+    Zathura.PDF.page_number     = 0;
+    Zathura.PDF.scale           = 0;
+    Zathura.PDF.rotate          = 0;
+  }
+  Zathura.PDF.number_of_pages = 0;
+  Zathura.PDF.page_offset     = 0;
+  g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
+
+  /* destroy index */
+  if(Zathura.UI.index)
+  {
+    gtk_widget_destroy(Zathura.UI.index);
+    Zathura.UI.index = NULL;
+  }
+
+  /* destroy information */
+  if(Zathura.UI.information)
+  {
+    gtk_widget_destroy(Zathura.UI.information);
+    Zathura.UI.information = NULL;
+  }
+
+  /* free markers */
+  if(Zathura.Marker.markers)
+    free(Zathura.Marker.markers);
+  Zathura.Marker.number_of_markers =  0;
+  Zathura.Marker.last              = -1;
+
+  update_status();
+}
+
+void
 enter_password()
 {
   /* replace default inputbar handler */
@@ -936,7 +1031,7 @@ open_file(char* path, char* password)
 
   /* close old file */
   g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
-  cmd_close(-1, NULL);
+  close_file(FALSE);
   g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
 
   /* format path */
@@ -984,7 +1079,7 @@ open_file(char* path, char* password)
   Zathura.PDF.password = password;
 
   /* inotify */
-  if(!Zathura.FileMonitor.monitor || !Zathura.FileMonitor.file)
+  if(!Zathura.FileMonitor.monitor)
   {
     GFile* file = g_file_new_for_uri(file_uri);
 
@@ -1068,16 +1163,15 @@ open_file(char* path, char* password)
     }
   }
 
-  /* set window title to filename */
-  char * file_basename;
-  file_basename = basename(file);
-  gtk_window_set_title(Zathura.UI.window, file_basename);
+  /* set window title */
+  gtk_window_set_title(GTK_WINDOW(Zathura.UI.window), basename(file));
 
   /* show document */
   set_page(start_page);
   update_status();
 
   g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
+  isc_abort(NULL);
   return TRUE;
 }
 
@@ -1552,8 +1646,7 @@ sc_recolor(Argument* argument)
 void
 sc_reload(Argument* argument)
 {
-  if(!Zathura.PDF.document)
-    return;
+  draw(Zathura.PDF.page_number);
 
   /* save old information */
   g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
@@ -1565,7 +1658,7 @@ sc_reload(Argument* argument)
   g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
 
   /* reopen and restore settings */
-  cmd_close(0, NULL);
+  close_file(TRUE);
   open_file(path, password);
 
   Zathura.PDF.scale  = scale;
@@ -2302,89 +2395,7 @@ cmd_open_bookmark(int argc, char** argv)
 gboolean
 cmd_close(int argc, char** argv)
 {
-  if(!Zathura.PDF.document)
-  {
-    if(argc != -1)
-      notify(ERROR, "No file has been opened");
-    return FALSE;
-  }
-
-  /* clean up pages */
-  int i;
-  for(i = 0; i < Zathura.PDF.number_of_pages; i++)
-  {
-    Page* current_page = Zathura.PDF.pages[i];
-    g_object_unref(current_page->page);
-  }
-
-  /* save bookmarks */
-  if(Zathura.Bookmarks.data)
-  {
-    /* set current page */
-    g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-        BM_PAGE_ENTRY, Zathura.PDF.page_number);
-
-    /* set page offset */
-    g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-        BM_PAGE_OFFSET, Zathura.PDF.page_offset);
-
-    /* save bookmarks */
-    int i;
-    for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
-      g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-          Zathura.Bookmarks.bookmarks[i].id, Zathura.Bookmarks.bookmarks[i].page);
-
-    /* convert file and save it */
-    gchar* bookmarks = g_key_file_to_data(Zathura.Bookmarks.data, NULL, NULL);
-    g_file_set_contents(Zathura.Bookmarks.file, bookmarks, -1, NULL);
-    g_free(bookmarks);
-  }
-
-  /* inotify */
-  g_object_unref(Zathura.FileMonitor.monitor);
-  Zathura.FileMonitor.monitor = NULL;
-
-  /* reset values */
-  free(Zathura.PDF.pages);
-  g_object_unref(Zathura.PDF.document);
-  g_free(Zathura.State.pages);
-
-  Zathura.State.pages         = g_strdup_printf("");
-  Zathura.State.filename      = (char*) DEFAULT_TEXT;
-
-  g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
-  Zathura.PDF.document        = NULL;
-  Zathura.PDF.file            = NULL;
-  Zathura.PDF.password        = NULL;
-  Zathura.PDF.page_number     = 0;
-  Zathura.PDF.number_of_pages = 0;
-  Zathura.PDF.scale           = 0;
-  Zathura.PDF.rotate          = 0;
-  Zathura.PDF.page_offset     = 0;
-  g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
-
-  /* destroy index */
-  if(Zathura.UI.index)
-  {
-    gtk_widget_destroy(Zathura.UI.index);
-    Zathura.UI.index = NULL;
-  }
-
-  /* destroy information */
-  if(Zathura.UI.information)
-  {
-    gtk_widget_destroy(Zathura.UI.information);
-    Zathura.UI.information = NULL;
-  }
-
-  /* free markers */
-  if(Zathura.Marker.markers)
-    free(Zathura.Marker.markers);
-  Zathura.Marker.number_of_markers =  0;
-  Zathura.Marker.last              = -1;
-
-  update_status();
-
+  close_file(FALSE);
   return TRUE;
 }
 
@@ -3152,7 +3163,7 @@ cb_destroy(GtkWidget* widget, gpointer data)
   pango_font_description_free(Zathura.Style.font);
 
   if(Zathura.PDF.document)
-    cmd_close(0, NULL);
+    close_file(FALSE);
 
   /* clean up other variables */
   g_free(Zathura.Bookmarks.file);
@@ -3678,6 +3689,22 @@ cb_watch_file(GFileMonitor* monitor, GFile* file, GFile* other_file, GFileMonito
 /* main function */
 int main(int argc, char* argv[])
 {
+  /* embed */
+  Zathura.UI.embed = 0;
+
+  /* parse arguments */
+  int i;
+  for(i = 1; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++)
+  {
+    switch(argv[i][1])
+    {
+      case 'e':
+        if(++i < argc)
+          Zathura.UI.embed = atoi(argv[i]);
+        break;
+    }
+  }
+
   g_thread_init(NULL);
   gdk_threads_init();
 
@@ -3686,13 +3713,14 @@ int main(int argc, char* argv[])
   init_zathura();
   init_directories();
 
-  if(argc >= 2)
-    open_file(argv[1], (argc == 3) ? argv[2] : NULL);
+  if(argc >= i+1)
+    open_file(argv[i], (argc == i+2) ? argv[i+1] : NULL);
 
   switch_view(Zathura.UI.document);
   update_status();
 
   gtk_widget_show_all(GTK_WIDGET(Zathura.UI.window));
+  gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
   gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
 
   gdk_threads_enter();
