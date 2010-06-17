@@ -1345,12 +1345,29 @@ set_page(int page)
   Zathura.PDF.page_number = page;
   Zathura.Search.draw     = FALSE;
 
-  Argument argument;
-  argument.n = TOP;
+  GtkAdjustment* adjustment;
+  gdouble hvalue = 0, vvalue = 0;
+  if(Zathura.Global.mode == FULLSCREEN)
+  {
+    adjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
+    hvalue = gtk_adjustment_get_value(adjustment);
+    adjustment = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
+    vvalue = gtk_adjustment_get_value(adjustment);
+  }
 
   switch_view(Zathura.UI.document);
   draw(page);
-  sc_scroll(&argument);
+
+  if(hvalue > 0)
+  {
+    adjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
+    gtk_adjustment_set_value(adjustment, hvalue);
+  }
+  if(vvalue > 0)
+  {
+    adjustment = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
+    gtk_adjustment_set_value(adjustment, vvalue);
+  }
 }
 
 void

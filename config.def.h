@@ -116,11 +116,13 @@ Shortcut shortcuts[] = {
   {0,                  GDK_space,         sc_navigate_index,    INDEX,      { SELECT } },
   {0,                  GDK_Return,        sc_navigate_index,    INDEX,      { SELECT } },
   {0,                  GDK_F5,            sc_toggle_fullscreen, FULLSCREEN, {0} },
-  {0,                  GDK_Left,          sc_navigate,          FULLSCREEN, { PREVIOUS } },
-  {0,                  GDK_Up,            sc_navigate,          FULLSCREEN, { PREVIOUS } },
-  {0,                  GDK_Down,          sc_navigate,          FULLSCREEN, { NEXT } },
-  {0,                  GDK_Right,         sc_navigate,          FULLSCREEN, { NEXT } },
+  {0,                  GDK_Left,          sc_scroll,            FULLSCREEN, { LEFT } },
+  {0,                  GDK_Up,            sc_scroll,            FULLSCREEN, { UP } },
+  {0,                  GDK_Down,          sc_scroll,            FULLSCREEN, { DOWN } },
+  {0,                  GDK_Right,         sc_scroll,            FULLSCREEN, { RIGHT } },
+  {0,                  GDK_r,             sc_rotate,            FULLSCREEN, {0} },
   {0,                  GDK_space,         sc_navigate,          FULLSCREEN, { NEXT } },
+  {0,                  GDK_b,             sc_navigate,          FULLSCREEN, { PREVIOUS } },
 };
 
 /* inputbar shortcuts */
