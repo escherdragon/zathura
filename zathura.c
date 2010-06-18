@@ -1303,7 +1303,7 @@ update_status()
 void
 read_configuration()
 {
-  char* zathurarc = g_strdup_printf("%s/%s", g_get_home_dir(), ZATHURA_RC);
+  char* zathurarc = g_strdup_printf("%s/%s/%s", g_get_home_dir(), ZATHURA_DIR, ZATHURA_RC);
 
   if(!zathurarc)
     return;
