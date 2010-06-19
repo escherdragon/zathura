@@ -56,7 +56,7 @@ char* uri_command = "firefox '%s'"; /* uri */
 
 /* additional settings */
 gboolean show_scrollbars = FALSE;
-#define ADJUST_OPEN ADJUST_BESTFIT
+int adjust_open          = ADJUST_BESTFIT;
 #define SELECTION_STYLE POPPLER_SELECTION_GLYPH
 #define GOTO_MODE GOTO_LABELS /* GOTO_DEFAULT, GOTO_LABELS, GOTO_OFFSET */
 
@@ -199,6 +199,7 @@ SpecialCommand special_commands[] = {
 /* settings */
 Setting settings[] = {
   /* name,                   variable,                           type,  render,  re-init, description */
+  {"adjust_open",            &(adjust_open),                     'i',   FALSE,   FALSE,   "Command to open URIs"},
   {"browser",                &(uri_command),                     's',   FALSE,   FALSE,   "Command to open URIs"},
   {"completion_bgcolor",     &(completion_bgcolor),              's',   FALSE,   TRUE,    "Completion background color"},
   {"completion_fgcolor",     &(completion_fgcolor),              's',   FALSE,   TRUE,    "Completion foreground color"},
@@ -258,6 +259,7 @@ ShortcutName shortcut_names[] = {
   {"toggle_index",      sc_toggle_index},
   {"toggle_inputbar",   sc_toggle_inputbar},
   {"toggle_statusbar",  sc_toggle_statusbar},
+  {"zoom",              sc_zoom},
 };
 
 /* argument names */
@@ -274,6 +276,8 @@ ArgumentName argument_names[] = {
   {"insert",      INSERT},
   {"left",        LEFT},
   {"next",        NEXT},
+  {"original",    ZOOM_ORIGINAL},
+  {"out",         ZOOM_OUT},
   {"previous",    PREVIOUS},
   {"right",       RIGHT},
   {"select",      SELECT},
@@ -290,4 +294,33 @@ ModeName mode_names[] = {
   {"insert",     INSERT},
   {"normal",     NORMAL},
   {"visual",     VISUAL},
+};
+
+/* special keys */
+GDKKey gdk_keys[] = {
+  {"<BackSpace>", GDK_BackSpace},
+  {"<CapsLock>",  GDK_Caps_Lock},
+  {"<Down>",      GDK_Down},
+  {"<Esc>",       GDK_Escape},
+  {"<F10>",       GDK_F10},
+  {"<F11>",       GDK_F11},
+  {"<F12>",       GDK_F12},
+  {"<F1>",        GDK_F1},
+  {"<F2>",        GDK_F2},
+  {"<F3>",        GDK_F3},
+  {"<F4>",        GDK_F4},
+  {"<F5>",        GDK_F5},
+  {"<F6>",        GDK_F6},
+  {"<F7>",        GDK_F7},
+  {"<F8>",        GDK_F8},
+  {"<F9>",        GDK_F9},
+  {"<Left>",      GDK_Left},
+  {"<PageDown>",  GDK_Page_Down},
+  {"<PageUp>",    GDK_Page_Up},
+  {"<Return>",    GDK_Return},
+  {"<Right>",     GDK_Right},
+  {"<Space>",     GDK_space},
+  {"<Super>",     GDK_Super_L},
+  {"<Tab>",       GDK_Tab},
+  {"<Up>",        GDK_Up},
 };

@@ -144,6 +144,12 @@ typedef struct SCList ShortcutList;
 
 typedef struct
 {
+  char* identifier;
+  int   key;
+} GDKKey;
+
+typedef struct
+{
   PopplerPage *page;
   int          id;
   char        *label;
@@ -364,6 +370,7 @@ void sc_toggle_inputbar(Argument*);
 void sc_toggle_fullscreen(Argument*);
 void sc_toggle_statusbar(Argument*);
 void sc_quit(Argument*);
+void sc_zoom(Argument*);
 
 /* inputbar shortcut declarations */
 void isc_abort(Argument*);
@@ -535,7 +542,8 @@ init_keylist()
 void
 init_settings()
 {
-  Zathura.State.filename = (char*) default_text;
+  Zathura.State.filename     = (char*) default_text;
+  Zathura.Global.adjust_mode = adjust_open;
 
   gtk_window_set_default_size(GTK_WINDOW(Zathura.UI.window), default_width, default_height);
 }
@@ -554,7 +562,6 @@ init_zathura()
   Zathura.Global.mode          = NORMAL;
   Zathura.Global.viewing_mode  = NORMAL;
   Zathura.Global.recolor       = 0;
-  Zathura.Global.adjust_mode   = ADJUST_OPEN;
   Zathura.Global.goto_mode     = GOTO_MODE;
   Zathura.Global.show_index    = FALSE;
 
@@ -1320,8 +1327,9 @@ read_configuration()
       int i;
       for(i = 0; i < n; i++)
       {
-        if(strlen(lines[i]) < 2)
+        if(!strlen(lines[i]))
           continue;
+
         gchar **tokens = g_strsplit(lines[i], " ", -1);
         int     length = g_strv_length(tokens);
 
@@ -2155,6 +2163,12 @@ sc_quit(Argument* argument)
   cb_destroy(NULL, NULL);
 }
 
+void
+sc_zoom(Argument* argument)
+{
+  bcmd_zoom(NULL, argument);
+}
+
 /* inputbar shortcut declarations */
 void
 isc_abort(Argument* argument)
@@ -2552,6 +2566,7 @@ gboolean
 cmd_close(int argc, char** argv)
 {
   close_file(FALSE);
+
   return TRUE;
 }
 
@@ -2830,35 +2845,69 @@ cmd_map(int argc, char** argv)
   /* parse modifier and key */
   int mask = 0;
   int key  = 0;
+  int keyl = strlen(ks);
   int mode = NORMAL;
 
   // single key (e.g.: g)
-  if(strlen(ks) == 1)
+  if(keyl == 1)
     key = ks[0];
 
   // modifier and key (e.g.: <S-g>
-  if(strlen(ks) == 5 && ks[0] == '<' && ks[2] == '-' && ks[4] == '>')
+  // special key or modifier and key/special key (e.g.: <S-g>, <Space>)
+
+  else if(keyl >= 3 && ks[0] == '<' && ks[keyl-1] == '>')
   {
-    /* evaluate modifier */
-    switch(ks[1])
+    char* specialkey = NULL;
+
+    /* check for modifier */
+    if(keyl >= 5 && ks[2] == '-')
     {
-      case 'S':
-        mask = GDK_SHIFT_MASK;
+      /* evaluate modifier */
+      switch(ks[1])
+      {
+        case 'S':
+          mask = GDK_SHIFT_MASK;
+          break;
+        case 'C':
+          mask = GDK_CONTROL_MASK;
+          break;
+      }
+
+      /* no valid modifier */
+      if(!mask)
+      {
+        notify(WARNING, "No valid modifier given.");
+        return FALSE;
+      }
+
+      /* modifier and special key */
+      if(keyl > 5)
+        specialkey = g_strndup(ks + 3, keyl - 4);
+      else
+        key = ks[3];
+    }
+    else
+      specialkey = ks;
+
+    /* search special key */
+    int g_c;
+    for(g_c = 0; specialkey && g_c < LENGTH(gdk_keys); g_c++)
+    {
+      if(!strcmp(specialkey, gdk_keys[g_c].identifier))
+      {
+        key = gdk_keys[g_c].key;
         break;
-      case 'C':
-        mask = GDK_CONTROL_MASK;
-        break;
+      }
     }
 
-    /* get key */
-    key = ks[3];
+    if(specialkey)
+      g_free(specialkey);
+  }
 
-    /* no valid modifier */
-    if(!mask)
-    {
-      notify(WARNING, "No valid modifier given.");
-      return FALSE;
-    }
+  if(!key)
+  {
+    notify(WARNING, "No valid key binding given.");
+    return FALSE;
   }
 
   /* parse argument */
@@ -2898,12 +2947,6 @@ cmd_map(int argc, char** argv)
         break;
       }
     }
-  }
-
-  if(!key)
-  {
-    notify(WARNING, "No valid key binding given.");
-    return FALSE;
   }
 
   /* search for existing binding to overwrite it */
@@ -3023,8 +3066,22 @@ cmd_set(int argc, char** argv)
           return FALSE;
 
         int *x = (int*) (settings[i].variable);
-        if(argv[1])
-          *x = atoi(argv[1]);
+
+        int id = -1;
+        int arg_c;
+        for(arg_c = 0; arg_c < LENGTH(argument_names); arg_c++)
+        {
+          if(!strcmp(argv[1], argument_names[arg_c].name))
+          {
+            id = argument_names[arg_c].argument;
+            break;
+          }
+        }
+
+        if(id == -1)
+          id = atoi(argv[1]);
+
+        *x = id;
       }
       else if(settings[i].type == 'f')
       {
@@ -3424,6 +3481,9 @@ cc_set(char* input)
 void
 bcmd_goto(char* buffer, Argument* argument)
 {
+  if(!Zathura.PDF.document)
+    return;
+
   int b_length = strlen(buffer);
   if(b_length < 1)
     return;
@@ -3832,9 +3892,12 @@ cb_view_kb_pressed(GtkWidget *widget, GdkEventKey *event, gpointer data)
   ShortcutList* sc = Zathura.Bindings.sclist;
   while(sc)
   {
-    if (event->keyval == sc->element.key &&
-      (((event->state & sc->element.mask) == sc->element.mask) || sc->element.mask == 0)
-      && (Zathura.Global.mode == sc->element.mode || sc->element.mode == -1))
+    if( event->keyval == sc->element.key &&
+      ((event->state  == sc->element.mask) ||
+      ((sc->element.mask == 0) && (sc->element.key >= 20 && sc->element.key <= 126))) &&
+       (Zathura.Global.mode == sc->element.mode || sc->element.mode == -1) &&
+       sc->element.function
+      )
     {
       sc->element.function(&(sc->element.argument));
       return TRUE;
