@@ -17,17 +17,23 @@
 
 /* macros */
 #define LENGTH(x) sizeof(x)/sizeof((x)[0])
+#define CLEAN(m) (m & ~(GDK_MOD2_MASK) & ~(GDK_BUTTON1_MASK) & ~(GDK_BUTTON2_MASK) & ~(GDK_BUTTON3_MASK) & ~(GDK_BUTTON4_MASK) & ~(GDK_BUTTON5_MASK))
 
 /* enums */
-enum { NEXT, PREVIOUS, LEFT, RIGHT, UP, DOWN,
-       BOTTOM, TOP, HIDE, NORMAL, HIGHLIGHT,
-       INSERT, VISUAL, DELETE_LAST_WORD, DEFAULT,
-       ERROR, WARNING, NEXT_GROUP, PREVIOUS_GROUP,
-       ZOOM_IN, ZOOM_OUT, ZOOM_ORIGINAL, ZOOM_SPECIFIC,
-       FORWARD, BACKWARD, ADJUST_BESTFIT, ADJUST_WIDTH,
-       ADJUST_NONE, CONTINUOUS, DELETE_LAST, ADD_MARKER,
-       EVAL_MARKER, INDEX, EXPAND, COLLAPSE, SELECT,
-       GOTO_DEFAULT, GOTO_LABELS, GOTO_OFFSET, FULLSCREEN };
+enum { NEXT, PREVIOUS, LEFT, RIGHT, UP, DOWN, BOTTOM, TOP, HIDE, HIGHLIGHT,
+  DELETE_LAST_WORD, DEFAULT, ERROR, WARNING, NEXT_GROUP, PREVIOUS_GROUP,
+  ZOOM_IN, ZOOM_OUT, ZOOM_ORIGINAL, ZOOM_SPECIFIC, FORWARD, BACKWARD,
+  ADJUST_BESTFIT, ADJUST_WIDTH, ADJUST_NONE, CONTINUOUS, DELETE_LAST,
+  ADD_MARKER, EVAL_MARKER, EXPAND, COLLAPSE, SELECT, GOTO_DEFAULT, GOTO_LABELS,
+  GOTO_OFFSET, HALF_UP, HALF_DOWN, FULL_UP, FULL_DOWN };
+
+/* define modes */
+#define ALL        (1 << 0)
+#define FULLSCREEN (1 << 1)
+#define INDEX      (1 << 2)
+#define INSERT     (1 << 3)
+#define NORMAL     (1 << 4)
+#define VISUAL     (1 << 5)
 
 /* typedefs */
 struct CElement
@@ -3893,9 +3899,9 @@ cb_view_kb_pressed(GtkWidget *widget, GdkEventKey *event, gpointer data)
   while(sc)
   {
     if( event->keyval == sc->element.key &&
-      ((event->state  == sc->element.mask) ||
-      ((sc->element.mask == 0) && (sc->element.key >= 20 && sc->element.key <= 126))) &&
-       (Zathura.Global.mode == sc->element.mode || sc->element.mode == -1) &&
+      ((CLEAN(event->state)  == sc->element.mask) ||
+      ((sc->element.mask == 0) && (sc->element.key >= 0x21 && sc->element.key <= 0x7E))) &&
+       (Zathura.Global.mode & sc->element.mode || sc->element.mode == ALL) &&
        sc->element.function
       )
     {
@@ -3920,7 +3926,7 @@ cb_view_kb_pressed(GtkWidget *widget, GdkEventKey *event, gpointer data)
   }
 
   /* append only numbers and characters to buffer */
-  if( (event->keyval >= 0x21) && (event->keyval <= 0x7A))
+  if( (event->keyval >= 0x21) && (event->keyval <= 0x7E))
   {
     if(!Zathura.Global.buffer)
       Zathura.Global.buffer = g_string_new("");
