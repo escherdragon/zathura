@@ -1,7 +1,7 @@
 # See LICENSE file for license and copyright information
 # zathura make config
 
-VERSION = 0.0.6
+VERSION = 0.0.7
 
 # paths
 PREFIX ?= /usr
@@ -22,3 +22,6 @@ DFLAGS = -g
 
 # compiler
 CC ?= gcc
+
+# strip
+SFLAGS = -s

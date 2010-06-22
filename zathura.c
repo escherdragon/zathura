@@ -21,11 +21,11 @@
 
 /* enums */
 enum { NEXT, PREVIOUS, LEFT, RIGHT, UP, DOWN, BOTTOM, TOP, HIDE, HIGHLIGHT,
-  DELETE_LAST_WORD, DEFAULT, ERROR, WARNING, NEXT_GROUP, PREVIOUS_GROUP,
-  ZOOM_IN, ZOOM_OUT, ZOOM_ORIGINAL, ZOOM_SPECIFIC, FORWARD, BACKWARD,
-  ADJUST_BESTFIT, ADJUST_WIDTH, ADJUST_NONE, CONTINUOUS, DELETE_LAST,
+  DELETE_LAST_WORD, DELETE_LAST_CHAR, DEFAULT, ERROR, WARNING, NEXT_GROUP,
+  PREVIOUS_GROUP, ZOOM_IN, ZOOM_OUT, ZOOM_ORIGINAL, ZOOM_SPECIFIC, FORWARD,
+  BACKWARD, ADJUST_BESTFIT, ADJUST_WIDTH, ADJUST_NONE, CONTINUOUS, DELETE_LAST,
   ADD_MARKER, EVAL_MARKER, EXPAND, COLLAPSE, SELECT, GOTO_DEFAULT, GOTO_LABELS,
-  GOTO_OFFSET, HALF_UP, HALF_DOWN, FULL_UP, FULL_DOWN };
+  GOTO_OFFSET, HALF_UP, HALF_DOWN, FULL_UP, FULL_DOWN, NEXT_CHAR, PREVIOUS_CHAR };
 
 /* define modes */
 #define ALL        (1 << 0)
@@ -242,6 +242,8 @@ struct
     int       goto_mode;
     int       adjust_mode;
     gboolean  show_index;
+    gboolean  show_statusbar;
+    gboolean  show_inputbar;
   } Global;
 
   struct
@@ -487,6 +489,18 @@ init_look()
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(Zathura.UI.view), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
   else
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(Zathura.UI.view), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+
+  /* inputbar */
+  if(Zathura.Global.show_inputbar)
+    gtk_widget_show(GTK_WIDGET(Zathura.UI.inputbar));
+  else
+    gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
+
+  /* statusbar */
+  if(Zathura.Global.show_statusbar)
+    gtk_widget_show(GTK_WIDGET(Zathura.UI.statusbar));
+  else
+    gtk_widget_hide(GTK_WIDGET(Zathura.UI.statusbar));
 }
 
 void
@@ -565,11 +579,13 @@ init_zathura()
   g_static_mutex_init(&(Zathura.Lock.select_lock));
 
   /* other */
-  Zathura.Global.mode          = NORMAL;
-  Zathura.Global.viewing_mode  = NORMAL;
-  Zathura.Global.recolor       = 0;
-  Zathura.Global.goto_mode     = GOTO_MODE;
-  Zathura.Global.show_index    = FALSE;
+  Zathura.Global.mode           = NORMAL;
+  Zathura.Global.viewing_mode   = NORMAL;
+  Zathura.Global.recolor        = 0;
+  Zathura.Global.goto_mode      = GOTO_MODE;
+  Zathura.Global.show_index     = FALSE;
+  Zathura.Global.show_inputbar  = TRUE;
+  Zathura.Global.show_statusbar = TRUE;
 
   Zathura.State.pages             = g_strdup_printf("");
   Zathura.State.scroll_percentage = 0;
@@ -1725,6 +1741,9 @@ sc_change_mode(Argument* argument)
 void
 sc_focus_inputbar(Argument* argument)
 {
+  if(!(GTK_WIDGET_VISIBLE(GTK_WIDGET(Zathura.UI.inputbar))))
+    gtk_widget_show(GTK_WIDGET(Zathura.UI.inputbar));
+
   if(argument->data)
   {
     notify(DEFAULT, argument->data);
@@ -1815,6 +1834,9 @@ sc_reload(Argument* argument)
 {
   draw(Zathura.PDF.page_number);
 
+  GtkAdjustment* vadjustment = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
+  GtkAdjustment* hadjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
+
   /* save old information */
   g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
   char* path     = Zathura.PDF.file ? strdup(Zathura.PDF.file) : NULL;
@@ -1822,14 +1844,20 @@ sc_reload(Argument* argument)
   int scale      = Zathura.PDF.scale;
   int page       = Zathura.PDF.page_number;
   int rotate     = Zathura.PDF.rotate;
+  gdouble va     = gtk_adjustment_get_value(vadjustment);
+  gdouble ha     = gtk_adjustment_get_value(hadjustment);
   g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
 
   /* reopen and restore settings */
   close_file(TRUE);
   open_file(path, password);
 
+  g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
   Zathura.PDF.scale  = scale;
   Zathura.PDF.rotate = rotate;
+  gtk_adjustment_set_value(vadjustment, va);
+  gtk_adjustment_set_value(hadjustment, ha);
+  g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
 
   draw(page);
 
@@ -2147,6 +2175,7 @@ sc_toggle_fullscreen(Argument* argument)
   else
   {
     gtk_window_unfullscreen(GTK_WINDOW(Zathura.UI.window));
+    gtk_widget_show(GTK_WIDGET(Zathura.UI.inputbar));
     gtk_widget_show(GTK_WIDGET(Zathura.UI.statusbar));
 
     Zathura.Global.mode = NORMAL;
@@ -2184,6 +2213,9 @@ isc_abort(Argument* argument)
 
   notify(DEFAULT, "");
   gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
+
+  if(!Zathura.Global.show_inputbar)
+    gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
 }
 
 void
@@ -2472,28 +2504,38 @@ isc_completion(Argument* argument)
 void
 isc_string_manipulation(Argument* argument)
 {
+ gchar *input  = gtk_editable_get_chars(GTK_EDITABLE(Zathura.UI.inputbar), 0, -1);
+ int    length = strlen(input);
+ int pos       = gtk_editable_get_position(GTK_EDITABLE(Zathura.UI.inputbar));
+
   if(argument->n == DELETE_LAST_WORD)
   {
-    gchar *input  = gtk_editable_get_chars(GTK_EDITABLE(Zathura.UI.inputbar), 0, -1);
-    int    length = strlen(input);
-    int    i      = 0;
+    int i = pos - 1;
 
-    for(i = length; i > 0; i--)
-    {
-      if( (input[i] == ' ') ||
-          (input[i] == '/') )
-      {
-        if(i == (length - 1))
-          continue;
+    if(!pos)
+      return;
 
-        i = (input[i] == ' ') ? (i - 1) : i;
-        break;
-      }
-    }
+    /* remove trailing spaces */
+    for(; i >= 0 && input[i] == ' '; i--);
 
-    notify(DEFAULT, g_strndup(input, i + 1));
-    gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), -1);
+    /* find the beginning of the word */
+    while((i > 0) && (input[i] != ' ') && (input[i] != '/'))
+      i--;
+
+    gtk_editable_delete_text(GTK_EDITABLE(Zathura.UI.inputbar),  i, pos);
+    gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), i);
   }
+  else if(argument->n == DELETE_LAST_CHAR)
+  {
+    if((length - 1) <= 0)
+      isc_abort(NULL);
+
+    gtk_editable_delete_text(GTK_EDITABLE(Zathura.UI.inputbar), pos - 1, pos);
+  }
+  else if(argument->n == NEXT_CHAR)
+    gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), pos+1);
+  else if(argument->n == PREVIOUS_CHAR)
+    gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), (pos == 0) ? 0 : pos - 1);
 }
 
 /* command implementation */
@@ -2996,7 +3038,7 @@ gboolean
 cmd_open(int argc, char** argv)
 {
   if(argc == 0 || strlen(argv[0]) == 0)
-    return FALSE;
+    return TRUE;
 
   /* assembly the arguments back to one string */
   int i = 0;
@@ -3898,15 +3940,21 @@ cb_view_kb_pressed(GtkWidget *widget, GdkEventKey *event, gpointer data)
   ShortcutList* sc = Zathura.Bindings.sclist;
   while(sc)
   {
-    if( event->keyval == sc->element.key &&
-      ((CLEAN(event->state)  == sc->element.mask) ||
-      ((sc->element.mask == 0) && (sc->element.key >= 0x21 && sc->element.key <= 0x7E))) &&
-       (Zathura.Global.mode & sc->element.mode || sc->element.mode == ALL) &&
-       sc->element.function
+    if(
+       event->keyval == sc->element.key
+       && (CLEAN(event->state) == sc->element.mask || (sc->element.key >= 0x21
+       && sc->element.key <= 0x7E && CLEAN(event->state) == GDK_SHIFT_MASK))
+       && (Zathura.Global.mode & sc->element.mode || sc->element.mode == ALL)
+       && sc->element.function
       )
     {
-      sc->element.function(&(sc->element.argument));
-      return TRUE;
+      if(!(Zathura.Global.buffer && strlen(Zathura.Global.buffer->str)) || (sc->element.mask == GDK_CONTROL_MASK) ||
+         (sc->element.key <= 0x21 || sc->element.key >= 0x7E)
+        )
+      {
+        sc->element.function(&(sc->element.argument));
+        return TRUE;
+      }
     }
 
     sc = sc->next;
@@ -4180,7 +4228,12 @@ int main(int argc, char* argv[])
 
   gtk_widget_show_all(GTK_WIDGET(Zathura.UI.window));
   gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
-  gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
+
+  if(!Zathura.Global.show_inputbar)
+    gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
+
+  if(!Zathura.Global.show_statusbar)
+    gtk_widget_hide(GTK_WIDGET(Zathura.UI.statusbar));
 
   gdk_threads_enter();
   gtk_main();

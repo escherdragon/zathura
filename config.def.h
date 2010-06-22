@@ -12,7 +12,7 @@ static const char FORMAT_COMMAND[]     = "<b>%s</b>";
 static const char FORMAT_DESCRIPTION[] = "<i>%s</i>";
 
 /* directories and files */
-static const char ZATHURA_DIR[]   = ".zathura";
+static const char ZATHURA_DIR[]   = ".config/zathura";
 static const char BOOKMARK_FILE[] = "bookmarks";
 static const char ZATHURA_RC[]    = "zathurarc";
 
@@ -128,13 +128,18 @@ Shortcut shortcuts[] = {
 InputbarShortcut inputbar_shortcuts[] = {
   /* mask,             key,               function,                  argument */
   {0,                  GDK_Escape,        isc_abort,                 {0} },
+  {GDK_CONTROL_MASK,   GDK_c,             isc_abort,                 {0} },
   {0,                  GDK_Up,            isc_command_history,       {0} },
   {0,                  GDK_Down,          isc_command_history,       {0} },
   {0,                  GDK_Tab,           isc_completion,            { NEXT } },
   {GDK_CONTROL_MASK,   GDK_Tab,           isc_completion,            { NEXT_GROUP } },
   {0,                  GDK_ISO_Left_Tab,  isc_completion,            { PREVIOUS } },
   {GDK_CONTROL_MASK,   GDK_ISO_Left_Tab,  isc_completion,            { PREVIOUS_GROUP } },
+  {0,                  GDK_BackSpace,     isc_string_manipulation,   { DELETE_LAST_CHAR } },
+  {GDK_CONTROL_MASK,   GDK_h,             isc_string_manipulation,   { DELETE_LAST_CHAR } },
   {GDK_CONTROL_MASK,   GDK_w,             isc_string_manipulation,   { DELETE_LAST_WORD } },
+  {GDK_CONTROL_MASK,   GDK_f,             isc_string_manipulation,   { NEXT_CHAR } },
+  {GDK_CONTROL_MASK,   GDK_b,             isc_string_manipulation,   { PREVIOUS_CHAR } },
 };
 
 /* mouse navigation */
@@ -226,11 +231,14 @@ Setting settings[] = {
   {"recolor_lightcolor",     &(recolor_lightcolor),              's',   FALSE,   TRUE,    "Recoloring (light color)"},
   {"scroll_step",            &(scroll_step),                     'f',   FALSE,   FALSE,   "Scroll step"},
   {"scrollbars",             &(show_scrollbars),                 'b',   FALSE,   TRUE,    "Show scrollbars"},
+  {"show_statusbar",         &(Zathura.Global.show_statusbar),   'b',   FALSE,   TRUE,    "Show statusbar"},
+  {"show_inputbar",          &(Zathura.Global.show_inputbar),    'b',   FALSE,   TRUE,    "Show inputbar"},
   {"search_highlight",       &(search_highlight),                's',   FALSE,   TRUE,    "Highlighted results"},
   {"select_text",            &(select_text),                     's',   FALSE,   TRUE,    "Rectangle of the selected text"},
   {"statusbar_bgcolor",      &(statusbar_bgcolor),               's',   FALSE,   TRUE,    "Statusbar background color"},
   {"statusbar_fgcolor",      &(statusbar_fgcolor),               's',   FALSE,   TRUE,    "Statusbar foreground color"},
   {"transparency",           &(transparency),                    'f',   FALSE,   FALSE,   "Transparency of rectangles"},
+  {"uri_command",            &(uri_command),                     's',   FALSE,   FALSE,   "Command for opening URIs"},
   {"width",                  &(default_width),                   'i',   FALSE,   FALSE,   "Default window width"},
   {"zoom_max",               &(zoom_max),                        'f',   FALSE,   FALSE,   "Zoom maximum"},
   {"zoom_min",               &(zoom_min),                        'f',   FALSE,   FALSE,   "Zoom minimum"},
