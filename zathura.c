@@ -183,6 +183,12 @@ typedef struct
   int page;
 } Bookmark;
 
+typedef struct
+{
+  gdouble x;
+  gdouble y;
+} PagePosition;
+
 /* zathura */
 struct
 {
@@ -353,6 +359,8 @@ void recalcRectangle(int, PopplerRectangle*);
 void setCompletionRowColor(GtkBox*, int, int);
 void set_page(int);
 void switch_view(GtkWidget*);
+void save_position(PagePosition*, int);
+void restore_position(PagePosition*);
 GtkEventBox* createCompletionRow(GtkBox*, char*, char*, gboolean);
 
 /* thread declaration */
@@ -369,6 +377,7 @@ void sc_navigate(Argument*);
 void sc_recolor(Argument*);
 void sc_reload(Argument*);
 void sc_rotate(Argument*);
+void sc_flip(Argument*);
 void sc_scroll(Argument*);
 void sc_search(Argument*);
 void sc_switch_goto_mode(Argument*);
@@ -1504,35 +1513,53 @@ set_page(int page)
   Zathura.PDF.page_number = page;
   Zathura.Search.draw     = FALSE;
 
-  GtkAdjustment* adjustment;
-  gdouble hvalue = 0, vvalue = 0;
+  PagePosition point = { 0, 0 };
   if(Zathura.Global.mode == FULLSCREEN)
-  {
-    adjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
-    hvalue = gtk_adjustment_get_value(adjustment);
-    adjustment = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
-    vvalue = gtk_adjustment_get_value(adjustment);
-  }
+    save_position(&point, 0);
 
   switch_view(Zathura.UI.document);
   draw(page);
 
-  if(hvalue > 0)
-  {
-    adjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
-    gtk_adjustment_set_value(adjustment, hvalue);
+  restore_position(&point);
+}
+
+void
+save_position(PagePosition* position, int flip)
+{
+  GtkAdjustment* adjustment;
+  adjustment  = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
+  position->x = gtk_adjustment_get_value(adjustment);
+  if(flip) {
+    gdouble page  = gtk_adjustment_get_page_size(adjustment);
+    gdouble max = gtk_adjustment_get_upper(adjustment) - page;
+    position->x = max - position->x;
   }
-  else
-  {
+  adjustment  = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
+  position->y = gtk_adjustment_get_value(adjustment);
+  if(flip) {
+    gdouble page  = gtk_adjustment_get_page_size(adjustment);
+    gdouble max = gtk_adjustment_get_upper(adjustment) - page;
+    position->y = max - position->y;
+  }
+}
+
+void
+restore_position(PagePosition* position)
+{
+  GtkAdjustment* adjustment;
+  if(position->x > 0) {
+    adjustment = gtk_scrolled_window_get_hadjustment(Zathura.UI.view);
+    gtk_adjustment_set_value(adjustment, position->x);
+  }
+  else {
     Argument argument;
     argument.n = TOP;
     sc_scroll(&argument);
   }
 
-  if(vvalue > 0)
-  {
+  if(position->y > 0) {
     adjustment = gtk_scrolled_window_get_vadjustment(Zathura.UI.view);
-    gtk_adjustment_set_value(adjustment, vvalue);
+    gtk_adjustment_set_value(adjustment, position->y);
   }
 }
 
@@ -1875,6 +1902,16 @@ sc_rotate(Argument* argument)
   Zathura.Search.draw = TRUE;
 
   draw(Zathura.PDF.page_number);
+}
+
+void
+sc_flip(Argument* argument)
+{
+  PagePosition position = { 0, 0 };
+  save_position(&position, 1);
+  sc_rotate(argument);
+  sc_rotate(argument);
+  restore_position(&position);
 }
 
 void

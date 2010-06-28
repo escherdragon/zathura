@@ -104,6 +104,7 @@ Shortcut shortcuts[] = {
   {0,                  GDK_Return,        sc_navigate_index,    INDEX,      { SELECT } },
   {0,                  GDK_R,             sc_reload,            NORMAL,     {0} },
   {0,                  GDK_r,             sc_rotate,            NORMAL | FULLSCREEN, {0} },
+  {0,                  GDK_e,             sc_flip,              NORMAL | FULLSCREEN, {0} },
   {0,                  GDK_n,             sc_search,            NORMAL,     { FORWARD } },
   {0,                  GDK_N,             sc_search,            NORMAL,     { BACKWARD } },
   {0,                  GDK_h,             sc_scroll,            NORMAL,     { LEFT } },
@@ -147,6 +148,7 @@ InputbarShortcut inputbar_shortcuts[] = {
 Shortcut mouse_shortcuts[] = {
   /* mask, button, function,    mode,   argument */
   {0,      1,      sc_navigate, FULLSCREEN, { NEXT } },
+  {0,      2,      sc_flip,     FULLSCREEN, { 0 } },
   {0,      3,      sc_navigate, FULLSCREEN, { PREVIOUS } },
 };
 
