@@ -1,11 +1,12 @@
 /* settings */
-int   default_width  = 800;
-int   default_height = 600;
-float zoom_step      = 10;
-float zoom_min       = 10;
-float zoom_max       = 400;
-float scroll_step    = 40;
-float transparency   = 0.4;
+int   default_width    = 800;
+int   default_height   = 600;
+float zoom_step        = 10;
+float zoom_min         = 10;
+float zoom_max         = 400;
+float scroll_step      = 40;
+float transparency     = 0.4;
+float smooth_scrolling = 0.0;
 
 /* completion */
 static const char FORMAT_COMMAND[]     = "<b>%s</b>";
@@ -235,6 +236,7 @@ Setting settings[] = {
   {"show_inputbar",          &(Zathura.Global.show_inputbar),    'b',   FALSE,   TRUE,    "Show inputbar"},
   {"search_highlight",       &(search_highlight),                's',   FALSE,   TRUE,    "Highlighted results"},
   {"select_text",            &(select_text),                     's',   FALSE,   TRUE,    "Rectangle of the selected text"},
+  {"smooth_scrolling",       &(smooth_scrolling),                'f',   FALSE,   TRUE,    "Show scrollbars"},
   {"statusbar_bgcolor",      &(statusbar_bgcolor),               's',   FALSE,   TRUE,    "Statusbar background color"},
   {"statusbar_fgcolor",      &(statusbar_fgcolor),               's',   FALSE,   TRUE,    "Statusbar foreground color"},
   {"transparency",           &(transparency),                    'f',   FALSE,   FALSE,   "Transparency of rectangles"},

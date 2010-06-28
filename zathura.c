@@ -1347,7 +1347,7 @@ read_configuration()
       int     n     = g_strv_length(lines) - 1;
 
       int i;
-      for(i = 0; i < n; i++)
+      for(i = 0; i <= n; i++)
       {
         if(!strlen(lines[i]))
           continue;
@@ -1891,6 +1891,8 @@ sc_scroll(Argument* argument)
   gdouble value      = gtk_adjustment_get_value(adjustment);
   gdouble page       = gtk_adjustment_get_page_increment(adjustment);
   gdouble max        = gtk_adjustment_get_upper(adjustment) - view_size;
+  gdouble new_value  = value;
+  gboolean static ss = FALSE;
 
   if( argument->n == PREVIOUS && value == 0 )
   {
@@ -1898,26 +1900,44 @@ sc_scroll(Argument* argument)
     arg.n = PREVIOUS;
     sc_navigate(&arg);
     arg.n = BOTTOM;
+    ss = TRUE;
     sc_scroll(&arg);
+    return;
   }
   else if( argument->n == NEXT && value == max )
   {
     Argument arg;
     arg.n = NEXT;
+    ss = TRUE;
     sc_navigate(&arg);
+    return;
   }
   else if((argument->n == LEFT) || (argument->n == UP))
-    gtk_adjustment_set_value(adjustment, (value - scroll_step) < 0 ? 0 : (value - scroll_step));
+    new_value = (value - scroll_step) < 0 ? 0 : (value - scroll_step);
   else if(argument->n == TOP)
-    gtk_adjustment_set_value(adjustment, 0);
+    new_value = 0;
   else if(argument->n == BOTTOM)
-    gtk_adjustment_set_value(adjustment, max);
+    new_value = max;
   else if(argument->n == PREVIOUS)
-    gtk_adjustment_set_value(adjustment, (value - page) < 0 ? 0 : (value - page));
+    new_value = (value - page) < 0 ? 0 : (value - page);
   else if(argument->n == NEXT)
-    gtk_adjustment_set_value(adjustment, (value + page) > max ? max : (value + page));
+    new_value = (value + page) > max ? max : (value + page);
   else
-    gtk_adjustment_set_value(adjustment, (value + scroll_step) > max ? max : (value + scroll_step));
+    new_value = (value + scroll_step) > max ? max : (value + scroll_step);
+
+  if(smooth_scrolling && !ss)
+  {
+    gdouble i;
+    if(new_value > value)
+      for(i = value; (i + smooth_scrolling) < new_value; i += smooth_scrolling)
+        gtk_adjustment_set_value(adjustment, i);
+    else
+      for(i = value; (i + smooth_scrolling) > new_value; i -= smooth_scrolling)
+        gtk_adjustment_set_value(adjustment, i);
+  }
+
+  gtk_adjustment_set_value(adjustment, new_value);
+  ss = FALSE;
 
   update_status();
 }
@@ -3380,6 +3400,12 @@ cc_open(char* input)
         out_of_memory();
 
       el->value = g_strdup_printf("%s%s", path, d_name);
+      if(g_file_test(el->value, G_FILE_TEST_IS_DIR))
+      {
+        gchar *subdir = el->value;
+        el->value = g_strdup_printf("%s/", subdir);
+        g_free(subdir);
+      }
       el->description = NULL;
       el->next = NULL;
 
