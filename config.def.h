@@ -14,9 +14,10 @@ static const char FORMAT_COMMAND[]     = "<b>%s</b>";
 static const char FORMAT_DESCRIPTION[] = "<i>%s</i>";
 
 /* directories and files */
-static const char ZATHURA_DIR[]   = ".config/zathura";
 static const char BOOKMARK_FILE[] = "bookmarks";
 static const char ZATHURA_RC[]    = "zathurarc";
+static const char GLOBAL_RC[]     = "/etc/zathurarc";
+char*             zathura_dir     = "~/.config/zathura";
 
 /* bookmarks */
 static const char BM_PAGE_ENTRY[]  = "page";
@@ -51,16 +52,33 @@ char* default_text = "[No Name]";
 
 /* printing */
 char* list_printer_command = "lpstat -v | sed -n '/^.*device for \\(.*\\): .*$/s//\\1/p'";
-char* print_command = "lp -d '%s' -P %s %s '%s'"; /* printer / pages / file */
+char* print_command = "lp -d '%s' -P %s %s %s"; /* printer / pages / file */
 
 /* open uri */
-char* uri_command = "firefox '%s'"; /* uri */
+char* uri_command = "firefox %s"; /* uri */
 
 /* additional settings */
 gboolean show_scrollbars = FALSE;
 int adjust_open          = ADJUST_BESTFIT;
 #define SELECTION_STYLE POPPLER_SELECTION_GLYPH
 #define GOTO_MODE GOTO_LABELS /* GOTO_DEFAULT, GOTO_LABELS, GOTO_OFFSET */
+
+/* define additional modes */
+#define INSERT     (1 << 4)
+#define VISUAL     (1 << 5)
+#define EMACS_CX   (1 << 6)
+
+/* mode names */
+ModeName mode_names[] = {
+  /* default mode names */
+  {"all",        ALL,         ""},
+  {"fullscreen", FULLSCREEN,  ""},
+  {"index",      INDEX,       ""},
+  {"normal",     NORMAL,      ""},
+  /* additional mode names */
+  {"insert",     INSERT,      "-- INSERT --"},
+  {"visual",     VISUAL,      "-- VISUAL --"}
+};
 
 /* shortcuts */
 Shortcut shortcuts[] = {
@@ -301,16 +319,6 @@ ArgumentName argument_names[] = {
   {"up",          UP},
   {"visual",      VISUAL},
   {"width",       ADJUST_WIDTH},
-};
-
-/* mode names */
-ModeName mode_names[] = {
-  {"all",        ALL},
-  {"fullscreen", FULLSCREEN},
-  {"index",      INDEX},
-  {"insert",     INSERT},
-  {"normal",     NORMAL},
-  {"visual",     VISUAL},
 };
 
 /* special keys */

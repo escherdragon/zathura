@@ -18,7 +18,7 @@
 
 /* macros */
 #define LENGTH(x) sizeof(x)/sizeof((x)[0])
-#define CLEAN(m) (m & ~(GDK_MOD2_MASK) & ~(GDK_BUTTON1_MASK) & ~(GDK_BUTTON2_MASK) & ~(GDK_BUTTON3_MASK) & ~(GDK_BUTTON4_MASK) & ~(GDK_BUTTON5_MASK))
+#define CLEAN(m) (m & ~(GDK_MOD2_MASK) & ~(GDK_BUTTON1_MASK) & ~(GDK_BUTTON2_MASK) & ~(GDK_BUTTON3_MASK) & ~(GDK_BUTTON4_MASK) & ~(GDK_BUTTON5_MASK) & ~(GDK_LEAVE_NOTIFY_MASK))
 
 /* enums */
 enum { NEXT, PREVIOUS, LEFT, RIGHT, UP, DOWN, BOTTOM, TOP, HIDE, HIGHLIGHT,
@@ -32,9 +32,7 @@ enum { NEXT, PREVIOUS, LEFT, RIGHT, UP, DOWN, BOTTOM, TOP, HIDE, HIGHLIGHT,
 #define ALL        (1 << 0)
 #define FULLSCREEN (1 << 1)
 #define INDEX      (1 << 2)
-#define INSERT     (1 << 3)
-#define NORMAL     (1 << 4)
-#define VISUAL     (1 << 5)
+#define NORMAL     (1 << 3)
 
 /* typedefs */
 struct CElement
@@ -93,7 +91,8 @@ typedef struct
 typedef struct
 {
   char* name;
-  int mode;
+  int   mode;
+  char* display;
 } ModeName;
 
 typedef struct
@@ -281,6 +280,7 @@ struct
   struct
   {
     GFileMonitor* monitor;
+    GFile*        file;
   } FileMonitor;
 
   struct
@@ -355,6 +355,7 @@ gboolean open_file(char*, char*);
 void open_uri(char*);
 void out_of_memory();
 void update_status();
+void read_configuration_file(const char*);
 void read_configuration();
 void recalcRectangle(int, PopplerRectangle*);
 void setCompletionRowColor(GtkBox*, int, int);
@@ -363,6 +364,7 @@ void switch_view(GtkWidget*);
 void save_position(PagePosition*, int);
 void restore_position(PagePosition*);
 GtkEventBox* createCompletionRow(GtkBox*, char*, char*, gboolean);
+char* fix_path(const char*);
 
 Completion* completion_init();
 CompletionGroup* completion_group_create(char*);
@@ -519,17 +521,28 @@ init_look()
     gtk_widget_hide(GTK_WIDGET(Zathura.UI.statusbar));
 }
 
+char*
+fix_path(const char* path)
+{
+  if (!path)
+    return NULL;
+
+  if (path[0] == '~')
+    return g_build_filename(g_get_home_dir(), path + 1, NULL);
+  else
+    return g_strdup(path);
+}
+
 void
 init_directories()
 {
   /* create zathura directory */
-  gchar *base_directory = g_build_filename(g_get_home_dir(), ZATHURA_DIR, NULL);
+  gchar *base_directory = fix_path(zathura_dir);
   g_mkdir_with_parents(base_directory,  0771);
-  g_free(base_directory);
 
   /* create or open existing bookmark file */
   Zathura.Bookmarks.data = g_key_file_new();
-  char* bookmarks = g_strdup_printf("%s/%s/%s", g_get_home_dir(), ZATHURA_DIR, BOOKMARK_FILE);
+  char* bookmarks = g_build_filename(base_directory, BOOKMARK_FILE, NULL);
 
   if(!g_file_test(bookmarks, G_FILE_TEST_IS_REGULAR))
   {
@@ -548,6 +561,7 @@ init_directories()
 
   Zathura.Bookmarks.file = g_strdup(bookmarks);
   g_free(bookmarks);
+  g_free(base_directory);
 }
 
 void
@@ -578,7 +592,7 @@ init_keylist()
 void
 init_settings()
 {
-  Zathura.State.filename     = (char*) default_text;
+  Zathura.State.filename     = g_strdup((char*) default_text);
   Zathura.Global.adjust_mode = adjust_open;
 
   gtk_window_set_default_size(GTK_WINDOW(Zathura.UI.window), default_width, default_height);
@@ -615,6 +629,7 @@ init_zathura()
   Zathura.Search.draw    = FALSE;
 
   Zathura.FileMonitor.monitor = NULL;
+  Zathura.FileMonitor.file    = NULL;
 
   /* window */
   if(Zathura.UI.embed)
@@ -887,26 +902,29 @@ draw(int page_id)
 void
 change_mode(int mode)
 {
-  char* mode_text;
+  char* mode_text = 0;
+  for(unsigned int i = 0; i != LENGTH(mode_names); ++i)
+    if(mode_names[i].mode == mode)
+    {
+      mode_text = mode_names[i].display;
+      break;
+    }
 
-  switch(mode)
+  if(!mode_text)
   {
-    case INSERT:
-      mode_text = "-- INSERT --";
-      break;
-    case VISUAL:
-      mode_text = "-- VISUAL --";
-      break;
-    case ADD_MARKER:
-      mode_text = "";
-      break;
-    case EVAL_MARKER:
-      mode_text = "";
-      break;
-    default:
-      mode_text = "";
-      mode      = NORMAL;
-      break;
+    switch(mode)
+    {
+      case ADD_MARKER:
+        mode_text = "";
+        break;
+      case EVAL_MARKER:
+        mode_text = "";
+        break;
+      default:
+        mode_text = "";
+        mode      = NORMAL;
+        break;
+    }
   }
 
   Zathura.Global.mode = mode;
@@ -960,6 +978,9 @@ close_file(gboolean keep_monitor)
   {
     Page* current_page = Zathura.PDF.pages[i];
     g_object_unref(current_page->page);
+    if(current_page->label)
+      g_free(current_page->label);
+    free(current_page);
   }
 
   /* save bookmarks */
@@ -990,6 +1011,12 @@ close_file(gboolean keep_monitor)
   {
     g_object_unref(Zathura.FileMonitor.monitor);
     Zathura.FileMonitor.monitor = NULL;
+
+    if(Zathura.FileMonitor.file)
+    {
+      g_object_unref(Zathura.FileMonitor.file);
+      Zathura.FileMonitor.file = NULL;
+    }
   }
 
   /* reset values */
@@ -999,10 +1026,15 @@ close_file(gboolean keep_monitor)
   gtk_window_set_title(GTK_WINDOW(Zathura.UI.window), "zathura");
 
   Zathura.State.pages         = g_strdup_printf("");
-  Zathura.State.filename      = (char*) default_text;;
+  if(Zathura.State.filename)
+    g_free(Zathura.State.filename);
+  Zathura.State.filename      = g_strdup((char*) default_text);
 
   g_static_mutex_lock(&(Zathura.Lock.pdf_obj_lock));
   Zathura.PDF.document        = NULL;
+  if(Zathura.PDF.file)
+    free(Zathura.PDF.file);
+
   if(!keep_monitor)
   {
     Zathura.PDF.file            = NULL;
@@ -1086,6 +1118,7 @@ highlight_result(int page_id, PopplerRectangle* rectangle)
   cairo_rectangle(cairo, trect->x1, trect->y1, (trect->x2 - trect->x1), (trect->y2 - trect->y1));
   poppler_rectangle_free(trect);
   cairo_fill(cairo);
+  cairo_destroy(cairo);
 }
 
 void notify(int level, char* message)
@@ -1139,6 +1172,8 @@ open_file(char* path, char* password)
   {
     char* home_path = getenv("HOME");
     int file_len = strlen(home_path) + strlen(path) - 1;
+    if(file)
+      free(file);
     file = malloc(file_len);
     if(!file)
       out_of_memory();
@@ -1165,6 +1200,8 @@ open_file(char* path, char* password)
   char* file_uri = g_filename_to_uri(file, NULL, &error);
   if (!file_uri)
   {
+    if(file)
+      free(file);
     char* message = g_strdup_printf("Can not open file: %s", error->message);
     notify(ERROR, message);
     g_free(message);
@@ -1214,6 +1251,7 @@ open_file(char* path, char* password)
       Zathura.FileMonitor.monitor = g_file_monitor_file(file, G_FILE_MONITOR_NONE, NULL, NULL);
       if(Zathura.FileMonitor.monitor)
         g_signal_connect(G_OBJECT(Zathura.FileMonitor.monitor), "changed", G_CALLBACK(cb_watch_file), NULL);
+      Zathura.FileMonitor.file = file;
     }
   }
 
@@ -1225,6 +1263,8 @@ open_file(char* path, char* password)
   Zathura.PDF.file            = file;
   Zathura.PDF.scale           = 100;
   Zathura.PDF.rotate          = 0;
+  if(Zathura.State.filename)
+    g_free(Zathura.State.filename);
   Zathura.State.filename      = g_markup_escape_text(file, -1);
   Zathura.PDF.pages           = malloc(Zathura.PDF.number_of_pages * sizeof(Page*));
 
@@ -1293,6 +1333,8 @@ open_file(char* path, char* password)
         Zathura.Bookmarks.number_of_bookmarks++;
       }
     }
+
+    g_strfreev(keys);
   }
 
   /* set window title */
@@ -1309,7 +1351,7 @@ open_file(char* path, char* password)
 
 void open_uri(char* uri)
 {
-  char* escaped_uri = g_strescape(uri, NULL);
+  char* escaped_uri = g_shell_quote(uri);
   char* uri_cmd = g_strdup_printf(uri_command, escaped_uri);
   system(uri_cmd);
   g_free(uri_cmd);
@@ -1348,40 +1390,51 @@ update_status()
 }
 
 void
-read_configuration()
+read_configuration_file(const char* rcfile)
 {
-  char* zathurarc = g_strdup_printf("%s/%s/%s", g_get_home_dir(), ZATHURA_DIR, ZATHURA_RC);
-
-  if(!zathurarc)
+  if(!rcfile)
     return;
 
-  if(g_file_test(zathurarc, G_FILE_TEST_IS_REGULAR))
+  if(!g_file_test(rcfile, G_FILE_TEST_IS_REGULAR))
+    return;
+
+  char* content = NULL;
+  if(g_file_get_contents(rcfile, &content, NULL, NULL))
   {
-    char* content = NULL;
+    gchar **lines = g_strsplit(content, "\n", -1);
+    int     n     = g_strv_length(lines) - 1;
 
-    if(g_file_get_contents(zathurarc, &content, NULL, NULL))
+    int i;
+    for(i = 0; i <= n; i++)
     {
-      gchar **lines = g_strsplit(content, "\n", -1);
-      int     n     = g_strv_length(lines) - 1;
+      if(!strlen(lines[i]))
+        continue;
 
-      int i;
-      for(i = 0; i <= n; i++)
-      {
-        if(!strlen(lines[i]))
-          continue;
+      gchar **tokens = g_strsplit(lines[i], " ", -1);
+      int     length = g_strv_length(tokens);
 
-        gchar **tokens = g_strsplit(lines[i], " ", -1);
-        int     length = g_strv_length(tokens);
+      if(!strcmp(tokens[0], "set"))
+        cmd_set(length - 1, tokens + 1);
+      else if(!strcmp(tokens[0], "map"))
+        cmd_map(length - 1, tokens + 1);
 
-        if(!strcmp(tokens[0], "set"))
-          cmd_set(length - 1, tokens + 1);
-        else if(!strcmp(tokens[0], "map"))
-          cmd_map(length - 1, tokens + 1);
-      }
+      g_strfreev(tokens);
     }
-  }
 
+    g_strfreev(lines);
+    g_free(content);
+  }
+}
+
+void
+read_configuration()
+{
+  char* configpath = fix_path(zathura_dir);
+  char* zathurarc = g_build_filename(configpath, ZATHURA_RC, NULL);
+  read_configuration_file(GLOBAL_RC);
+  read_configuration_file(zathurarc);
   g_free(zathurarc);
+  g_free(configpath);
 }
 
 void
@@ -1455,8 +1508,12 @@ createCompletionRow(GtkBox* results, char* command, char* description, gboolean 
   gtk_label_set_use_markup(show_command,     TRUE);
   gtk_label_set_use_markup(show_description, TRUE);
 
-  gtk_label_set_markup(show_command,     g_markup_printf_escaped(FORMAT_COMMAND,     command ? command : ""));
-  gtk_label_set_markup(show_description, g_markup_printf_escaped(FORMAT_DESCRIPTION, description ? description : ""));
+  gchar* c = g_markup_printf_escaped(FORMAT_COMMAND,     command ? command : "");
+  gchar* d = g_markup_printf_escaped(FORMAT_DESCRIPTION, description ? description : "");
+  gtk_label_set_markup(show_command,     c);
+  gtk_label_set_markup(show_description, d);
+  g_free(c);
+  g_free(d);
 
   if(group)
   {
@@ -1604,7 +1661,7 @@ completion_group_create(char* name)
   if(!group)
     out_of_memory();
 
-  group->value    = name;
+  group->value    = name ? g_strdup(name) : NULL;
   group->elements = NULL;
   group->next     = NULL;
 
@@ -1636,14 +1693,18 @@ void completion_free(Completion* completion)
     while(element)
     {
       CompletionElement* ne = element->next;
+      g_free(element->value);
+      g_free(element->description);
       free(element);
       element = ne;
     }
 
     CompletionGroup *ng = group->next;
+    g_free(group->value);
     free(group);
     group = ng;
   }
+  free(completion);
 }
 
 void completion_group_add_element(CompletionGroup* group, char* name, char* description)
@@ -1657,8 +1718,8 @@ void completion_group_add_element(CompletionGroup* group, char* name, char* desc
   if(!new_element)
     out_of_memory();
 
-  new_element->value       = name;
-  new_element->description = description;
+  new_element->value       = name ? g_strdup(name) : NULL;
+  new_element->description = description ?  g_strdup(description) : NULL;
   new_element->next        = NULL;
 
   if(el)
@@ -1738,6 +1799,8 @@ search(void* parameter)
     results = poppler_page_find_text(page, search_item);
     g_static_mutex_unlock(&(Zathura.Lock.pdflib_lock));
 
+    g_object_unref(page);
+
     if(results)
       break;
   }
@@ -1748,6 +1811,9 @@ search(void* parameter)
     gdk_threads_enter();
 
     set_page(next_page);
+
+    if(Zathura.Search.results)
+      g_list_free(Zathura.Search.results);
 
     Zathura.Search.results = results;
     Zathura.Search.page    = next_page;
@@ -1907,6 +1973,7 @@ sc_follow(Argument* argument)
       cairo_move_to(cairo, link_rectangle->x1 + 1, link_rectangle->y1 - 1);
       char* link_number = g_strdup_printf("%i", link_id++);
       cairo_show_text(cairo, link_number);
+      cairo_destroy(cairo);
       g_free(link_number);
     }
   }
@@ -2363,10 +2430,16 @@ isc_abort(Argument* argument)
   isc_completion(&arg);
 
   notify(DEFAULT, "");
+  change_mode(NORMAL);
   gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
 
   if(!Zathura.Global.show_inputbar)
     gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
+
+  /* replace default inputbar handler */
+  g_signal_handler_disconnect((gpointer) Zathura.UI.inputbar, Zathura.Handler.inputbar_activate);
+  Zathura.Handler.inputbar_activate = g_signal_connect(G_OBJECT(Zathura.UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), NULL);
+  sc_abort(NULL);
 }
 
 void
@@ -2393,11 +2466,18 @@ void
 isc_completion(Argument* argument)
 {
   gchar *input      = gtk_editable_get_chars(GTK_EDITABLE(Zathura.UI.inputbar), 1, -1);
-  gchar  identifier = gtk_editable_get_chars(GTK_EDITABLE(Zathura.UI.inputbar), 0,  1)[0];
+  gchar *tmp_string = gtk_editable_get_chars(GTK_EDITABLE(Zathura.UI.inputbar), 0,  1);
+  gchar  identifier = tmp_string[0];
   int    length     = strlen(input);
 
-  if(!length && !identifier)
+  if(!input || !tmp_string)
+  {
+    if(input)
+      g_free(input);
+    if(tmp_string)
+      g_free(tmp_string);
     return;
+  }
 
   /* get current information*/
   char* first_space = strstr(input, " ");
@@ -2408,7 +2488,7 @@ isc_completion(Argument* argument)
 
   if(!first_space)
   {
-    current_command          = input;
+    current_command          = g_strdup(input);
     current_command_length   = length;
     current_parameter        = NULL;
     current_parameter_length = 0;
@@ -2425,7 +2505,15 @@ isc_completion(Argument* argument)
   /* if the identifier does not match the command sign and
    * the completion should not be hidden, leave this function */
   if((identifier != ':') && (argument->n != HIDE))
+  {
+    if(current_command)
+      g_free(current_command);
+    if(input)
+      g_free(input);
+    if(tmp_string)
+      g_free(tmp_string);
     return;
+  }
 
   /* static elements */
   static GtkBox        *results = NULL;
@@ -2458,7 +2546,14 @@ isc_completion(Argument* argument)
     results = NULL;
 
     if(rows)
+    {
+      for(int i = 0; i != n_items; ++i)
+      {
+        g_free(rows[i].command);
+        g_free(rows[i].description);
+      }
       free(rows);
+    }
 
     rows         = NULL;
     current_item = 0;
@@ -2466,7 +2561,15 @@ isc_completion(Argument* argument)
     command_mode = TRUE;
 
     if(argument->n == HIDE)
+    {
+      if(current_command)
+        g_free(current_command);
+      if(input)
+        g_free(input);
+      if(tmp_string)
+        g_free(tmp_string);
       return;
+     }
   }
 
   /* create new list iff
@@ -2505,17 +2608,41 @@ isc_completion(Argument* argument)
             search_matching_command = TRUE;
           }
           else
+          {
+            if(current_command)
+              g_free(current_command);
+            if(input)
+              g_free(input);
+            if(tmp_string)
+              g_free(tmp_string);
             return;
+          }
         }
       }
 
       if(!search_matching_command)
+      {
+        if(current_command)
+          g_free(current_command);
+        if(input)
+          g_free(input);
+        if(tmp_string)
+          g_free(tmp_string);
         return;
+      }
 
       Completion *result = commands[previous_id].completion(current_parameter);
 
       if(!result || !result->groups)
+      {
+        if(current_command)
+          g_free(current_command);
+        if(input)
+          g_free(input);
+        if(tmp_string)
+          g_free(tmp_string);
         return;
+      }
 
       command_mode               = FALSE;
       CompletionGroup* group     = NULL;
@@ -2536,7 +2663,7 @@ isc_completion(Argument* argument)
             if(group->value && !group_elements)
             {
               rows = realloc(rows, (n_items + 1) * sizeof(CompletionRow));
-              rows[n_items].command     = group->value;
+              rows[n_items].command     = g_strdup(group->value);
               rows[n_items].description = NULL;
               rows[n_items].command_id  = -1;
               rows[n_items].is_group    = TRUE;
@@ -2544,8 +2671,8 @@ isc_completion(Argument* argument)
             }
 
             rows = realloc(rows, (n_items + 1) * sizeof(CompletionRow));
-            rows[n_items].command     = element->value;
-            rows[n_items].description = element->description;
+            rows[n_items].command     = g_strdup(element->value);
+            rows[n_items].description = element->description ? g_strdup(element->description) : NULL;
             rows[n_items].command_id  = previous_id;
             rows[n_items].is_group    = FALSE;
             rows[n_items++].row       = GTK_WIDGET(createCompletionRow(results, element->value, element->description, FALSE));
@@ -2580,8 +2707,8 @@ isc_completion(Argument* argument)
             ((current_command_length <= abbr_length) && !strncmp(current_command, commands[i].abbr,    current_command_length))
           )
         {
-          rows[n_items].command     = commands[i].command;
-          rows[n_items].description = commands[i].description;
+          rows[n_items].command     = g_strdup(commands[i].command);
+          rows[n_items].description = g_strdup(commands[i].description);
           rows[n_items].command_id  = i;
           rows[n_items].is_group    = FALSE;
           rows[n_items++].row       = GTK_WIDGET(createCompletionRow(results, commands[i].command, commands[i].description, FALSE));
@@ -2654,11 +2781,18 @@ isc_completion(Argument* argument)
     gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), -1);
     g_free(temp);
 
-    previous_command   = (command_mode) ? rows[current_item].command : current_command;
-    previous_parameter = (command_mode) ? current_parameter : rows[current_item].command;
+    previous_command   = g_strdup((command_mode) ? rows[current_item].command : current_command);
+    previous_parameter = g_strdup((command_mode) ? current_parameter : rows[current_item].command);
     previous_length    = strlen(previous_command) + ((command_mode) ? (length - current_command_length) : (strlen(previous_parameter) + 1));
     previous_id        = rows[current_item].command_id;
   }
+
+  if(current_command)
+    g_free(current_command);
+  if(input)
+    g_free(input);
+  if(tmp_string)
+    g_free(tmp_string);
 }
 
 void
@@ -2912,6 +3046,7 @@ cmd_export(int argc, char** argv)
 
         cairo_surface_write_to_png(image, file);
 
+        g_free(filename);
         g_free(file);
       }
     }
@@ -3247,13 +3382,16 @@ cmd_print(int argc, char** argv)
     addit = g_string_append(addit, argv[i]);
   }
 
-  char* escaped_filename = g_strescape(Zathura.PDF.file, NULL);
-  char* command = g_strdup_printf(print_command, printer, sites, addit->str, escaped_filename);
+  char* escaped_filename = g_shell_quote(Zathura.PDF.file);
+  char* escaped_addit    = g_shell_quote(addit->str);
+  char* command          = g_strdup_printf(print_command, printer, sites, escaped_addit, escaped_filename);
   system(command);
 
   g_free(sites);
   g_free(escaped_filename);
+  g_free(escaped_addit);
   g_free(command);
+  g_string_free(addit, TRUE);
 
   return TRUE;
 }
@@ -3437,40 +3575,60 @@ cc_open(char* input)
 
   completion_add_group(completion, group);
 
-  /* read dir */
-  char* path        = "/";
-  char* file        = "";
-  int   file_length = 0;
-
   /* ~ */
-  if(input[0] == '~')
+  if(input && input[0] == '~')
   {
     char *file = g_strdup_printf(":open %s/%s", getenv("HOME"), input + 1);
     gtk_entry_set_text(Zathura.UI.inputbar, file);
     gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), -1);
+    g_free(file);
     return NULL;
   }
+
+  /* read dir */
+  char* path        = g_strdup("/");
+  char* file        = g_strdup("");
+  int   file_length = 0;
 
   /* parse input string */
   if(input && strlen(input) > 0)
   {
-    char* path_temp = dirname(strdup(input));
-    char* file_temp = basename(strdup(input));
+    char* dinput = g_strdup(input);
+    char* binput = g_strdup(input);
+    char* path_temp = dirname(dinput);
+    char* file_temp = basename(binput);
     char  last_char = input[strlen(input) - 1];
 
     if( !strcmp(path_temp, "/") && !strcmp(file_temp, "/") )
-      file = "";
+    {
+      g_free(file);
+      file = g_strdup("");
+    }
     else if( !strcmp(path_temp, "/") && strcmp(file_temp, "/") && last_char != '/')
-      file = file_temp;
+    {
+      g_free(file);
+      file = g_strdup(file_temp);
+    }
     else if( !strcmp(path_temp, "/") && strcmp(file_temp, "/") && last_char == '/')
+    {
+      g_free(path);
       path = g_strdup_printf("/%s/", file_temp);
+    }
     else if(last_char == '/')
-      path = input;
+    {
+      g_free(path);
+      path = g_strdup(input);
+    }
     else
     {
+      g_free(path);
+      g_free(file);
       path = g_strdup_printf("%s/", path_temp);
-      file = file_temp;
+      file = g_strdup(file_temp);
     }
+
+    g_free(dinput);
+    g_free(binput);
   }
 
   file_length = strlen(file);
@@ -3478,7 +3636,11 @@ cc_open(char* input)
   /* open directory */
   GDir* dir = g_dir_open(path, 0, NULL);
   if(!dir)
+  {
+    g_free(path);
+    g_free(file);
     return NULL;
+  }
 
   /* create element list */
   char* name = NULL;
@@ -3499,10 +3661,14 @@ cc_open(char* input)
         g_free(subdir);
       }
       completion_group_add_element(group, d, NULL);
+      g_free(d);
     }
+    g_free(d_name);
   }
 
   g_dir_close(dir);
+  g_free(file);
+  g_free(path);
 
   return completion;
 }
@@ -3549,7 +3715,7 @@ cc_print(char* input)
       if( (input_length <= line_length) ||
           (!strncmp(input, current_line, input_length)) )
       {
-        completion_group_add_element(group, g_strdup(current_line), NULL);
+        completion_group_add_element(group, current_line, NULL);
       }
 
       free(current_line);
@@ -3713,6 +3879,8 @@ cb_destroy(GtkWidget* widget, gpointer data)
   /* inotify */
   if(Zathura.FileMonitor.monitor)
     g_object_unref(Zathura.FileMonitor.monitor);
+  if(Zathura.FileMonitor.file)
+    g_object_unref(Zathura.FileMonitor.file);
 
   g_list_free(Zathura.Global.history);
 
@@ -3725,6 +3893,10 @@ cb_destroy(GtkWidget* widget, gpointer data)
     free(sc);
     sc = ne;
   }
+
+  if(Zathura.State.filename)
+    g_free(Zathura.State.filename);
+  g_free(Zathura.State.pages);
 
   gtk_main_quit();
 
@@ -3961,10 +4133,6 @@ cb_inputbar_form_activate(GtkEntry* entry, gpointer data)
 
   poppler_page_free_link_mapping(link_list);
 
-  /* replace default inputbar handler */
-  g_signal_handler_disconnect((gpointer) Zathura.UI.inputbar, Zathura.Handler.inputbar_activate);
-  Zathura.Handler.inputbar_activate = g_signal_connect(G_OBJECT(Zathura.UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), NULL);
-
   /* reset all */
   set_page(new_page_id);
   isc_abort(NULL);
@@ -4139,6 +4307,7 @@ cb_view_button_release(GtkWidget* widget, GdkEventButton* event, gpointer data)
   cairo_rectangle(cairo, rectangle.x1 - offset_x, rectangle.y1 - offset_y,
       (rectangle.x2 - rectangle.x1), (rectangle.y2 - rectangle.y1));
   cairo_fill(cairo);
+  cairo_destroy(cairo);
   gtk_widget_queue_draw(Zathura.UI.drawing_area);
 
   /* resize selection rectangle to document page */
@@ -4256,18 +4425,25 @@ int main(int argc, char* argv[])
   /* embed */
   Zathura.UI.embed = 0;
 
-  /* parse arguments */
-  int i;
-  for(i = 1; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++)
+  static GOptionEntry entries[] =
   {
-    switch(argv[i][1])
-    {
-      case 'e':
-        if(++i < argc)
-          Zathura.UI.embed = atoi(argv[i]);
-        break;
-    }
+    { "reparent",   'e', 0                     , G_OPTION_ARG_INT,    &Zathura.UI.embed, "Reparents to window specified by xid", "xid" },
+    { "config-dir", 'c', G_OPTION_FLAG_FILENAME, G_OPTION_ARG_STRING, &zathura_dir,      "Path to the config directory",         "path " },
+    { NULL }
+  };
+
+  GOptionContext* context = g_option_context_new(" [file] [password]");
+  g_option_context_add_main_entries(context, entries, NULL);
+
+  GError* error = NULL;
+  if(!g_option_context_parse(context, &argc, &argv, &error))
+  {
+    printf("Error parsing command line arguments: %s\n", error->message);
+    g_option_context_free(context);
+    g_error_free(error);
+    return 1;
   }
+  g_option_context_free(context);
 
   g_thread_init(NULL);
   gdk_threads_init();
@@ -4281,8 +4457,8 @@ int main(int argc, char* argv[])
   init_look();
   init_directories();
 
-  if(argc >= i+1)
-    open_file(argv[i], (argc == i+2) ? argv[i+1] : NULL);
+  if(argc > 1)
+    open_file(argv[1], (argc == 3) ? argv[2] : NULL);
 
   switch_view(Zathura.UI.document);
   update_status();
