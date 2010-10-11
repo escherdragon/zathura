@@ -5,18 +5,24 @@ zathura \- a PDF viewer
 .B zathura
 .RB [-e\ xid]
 .RB [-c\ path]
+.RB [-d\ path]
 .RB [file]
 .RB [password]
 .SH DESCRIPTION
 zathura is a highly customizable and functional PDF viewer based on the poppler
 rendering library and the gtk+ toolkit. zathura provides a minimalistic and
 space saving interface, with a focus on keyboard interaction.
+
+If instead of a filename - is specified on the command line, zathura tries to
+render a PDF file piped to zathura via stdin.
 .SH OPTIONS
 .TP
 .B -e xid
 Reparents to window specified by xid.
 .B -c path
-Path to the config directory
+Path to the config directory (defaults to .config/zathura)
+.B -d path
+Path to the data directory (defaults to .local/share/zathura)
 .SH DEFAULT SETTINGS
 .SS Shortcuts
 .TP
