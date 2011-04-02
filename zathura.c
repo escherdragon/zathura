@@ -188,8 +188,15 @@ typedef struct
 
 typedef struct
 {
+  gdouble x;
+  gdouble y;
+} PagePosition;
+
+typedef struct
+{
   int id;
   int page;
+  PagePosition position;
 } Marker;
 
 typedef struct
@@ -197,12 +204,6 @@ typedef struct
   char* id;
   int page;
 } Bookmark;
-
-typedef struct
-{
-  gdouble x;
-  gdouble y;
-} PagePosition;
 
 /* zathura */
 struct
@@ -392,7 +393,7 @@ void set_completion_row_color(GtkBox*, int, int);
 void set_page(int);
 void switch_view(GtkWidget*);
 void save_page_position(PagePosition*, int);
-void restore_position(PagePosition*);
+void restore_page_position(PagePosition*);
 GtkEventBox* create_completion_row(GtkBox*, char*, char*, gboolean);
 gchar* fix_path(const gchar*);
 gchar* path_from_env(const gchar*);
@@ -811,6 +812,7 @@ add_marker(int id)
     if(Zathura.Marker.markers[i].id == id)
     {
       Zathura.Marker.markers[i].page = page_number;
+      save_page_position(&Zathura.Marker.markers[i].position, 0);
       Zathura.Marker.last            = page_number;
       return;
     }
@@ -824,6 +826,8 @@ add_marker(int id)
   Zathura.Marker.markers[marker_index].id   = id;
   Zathura.Marker.markers[marker_index].page = page_number;
   Zathura.Marker.last                       = page_number;
+
+  save_page_position(&Zathura.Marker.markers[marker_index].position, 0);
 }
 
 void
@@ -1185,6 +1189,7 @@ eval_marker(int id)
     if(Zathura.Marker.markers[i].id == id)
     {
       set_page(Zathura.Marker.markers[i].page);
+      restore_page_position(&Zathura.Marker.markers[i].position);
       return;
     }
   }
@@ -1761,7 +1766,7 @@ set_page(int page)
   switch_view(Zathura.UI.document);
   draw(page);
 
-  restore_position(&point);
+  restore_page_position(&point);
 }
 
 void
@@ -1785,7 +1790,7 @@ save_page_position(PagePosition* position, int flip)
 }
 
 void
-restore_position(PagePosition* position)
+restore_page_position(PagePosition* position)
 {
   GtkAdjustment* adjustment;
   if(position->x > 0) {
@@ -2286,7 +2291,7 @@ sc_flip(Argument* argument)
   save_page_position(&position, 1);
   sc_rotate(argument);
   sc_rotate(argument);
-  restore_position(&position);
+  restore_page_position(&position);
 }
 
 void
