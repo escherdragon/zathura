@@ -16,7 +16,7 @@ static const char FORMAT_DESCRIPTION[] = "<i>%s</i>";
 /* Use XDG directory specification if no config and data directory are given on
  * the command line. Uncomment the next line if you just want to use CONFIG_DIR
  * and DATA_DIR instead (these will be the default locations if the XDG_*
- * environment variebles are not set anyway) */
+ * environment variables are not set anyway) */
 /* #define ZATHURA_NO_XDG */
 
 /* directories and files */
@@ -29,6 +29,7 @@ static const char DATA_DIR[]      = "~/.local/share/zathura";
 /* bookmarks */
 static const char BM_PAGE_ENTRY[]  = "page";
 static const char BM_PAGE_OFFSET[] = "offset";
+int save_position = 1;
 
 /* look */
 char* font                   = "dejavu sans mono 8";
@@ -66,6 +67,7 @@ char* uri_command = "firefox %s"; /* uri */
 
 /* additional settings */
 gboolean show_scrollbars = FALSE;
+gboolean scroll_wrap     = TRUE;
 int adjust_open          = ADJUST_BESTFIT;
 #define SELECTION_STYLE POPPLER_SELECTION_GLYPH
 #define GOTO_MODE GOTO_LABELS /* GOTO_DEFAULT, GOTO_LABELS, GOTO_OFFSET */
@@ -99,7 +101,7 @@ Shortcut shortcuts[] = {
   {0,                  GDK_a,             sc_adjust_window,     NORMAL,     { ADJUST_BESTFIT } },
   {0,                  GDK_s,             sc_adjust_window,     NORMAL,     { ADJUST_WIDTH } },
   {0,                  GDK_Escape,        sc_abort,             ALL,        {0} },
-  {0,                  GDK_BackSpace,     sc_change_buffer,     ALL,        { DELETE_LAST } },
+  {0,                  GDK_BackSpace,     sc_scroll,            NORMAL,     { PREVIOUS } },
   {0,                  GDK_i,             sc_change_mode,       NORMAL,     { INSERT } },
   {0,                  GDK_v,             sc_change_mode,       NORMAL,     { VISUAL } },
   {0,                  GDK_m,             sc_change_mode,       NORMAL,     { ADD_MARKER } },
@@ -262,7 +264,9 @@ Setting settings[] = {
   {"recolor",                &(Zathura.Global.recolor),          'b',   TRUE,    FALSE,   "Invert the image" },
   {"recolor_darkcolor",      &(recolor_darkcolor),               's',   FALSE,   TRUE,    "Recoloring (dark color)"},
   {"recolor_lightcolor",     &(recolor_lightcolor),              's',   FALSE,   TRUE,    "Recoloring (light color)"},
+  {"save_position",          &(save_position),                   'b',   FALSE,   FALSE,   "Save position in file on quit and restore it on open"},
   {"scroll_step",            &(scroll_step),                     'f',   FALSE,   FALSE,   "Scroll step"},
+  {"scroll_wrap",            &(scroll_wrap),                     'b',   FALSE,   FALSE,   "Wrap scolling at last page"},
   {"scrollbars",             &(show_scrollbars),                 'b',   FALSE,   TRUE,    "Show scrollbars"},
   {"show_statusbar",         &(Zathura.Global.show_statusbar),   'b',   FALSE,   TRUE,    "Show statusbar"},
   {"show_inputbar",          &(Zathura.Global.show_inputbar),    'b',   FALSE,   TRUE,    "Show inputbar"},
