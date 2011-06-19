@@ -203,6 +203,7 @@ typedef struct
 {
   char* id;
   int page;
+  PagePosition position;
 } Bookmark;
 
 /* zathura */
@@ -1080,12 +1081,19 @@ close_file(gboolean keep_monitor)
 
     /* save bookmarks */
     int i;
+    Bookmark bm;
+    gint* location = malloc(sizeof(gint) * 3);
     for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
     {
-      g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-          Zathura.Bookmarks.bookmarks[i].id, Zathura.Bookmarks.bookmarks[i].page);
+      bm = Zathura.Bookmarks.bookmarks[i];
+      location[0] = bm.page;
+      location[1] = bm.position.x;
+      location[2] = bm.position.y;
+      g_key_file_set_integer_list(Zathura.Bookmarks.data, Zathura.PDF.file,
+                                  bm.id, location, 3);
       g_free(Zathura.Bookmarks.bookmarks[i].id);
     }
+    free(location);
     free(Zathura.Bookmarks.bookmarks);
     Zathura.Bookmarks.bookmarks = NULL;
     Zathura.Bookmarks.number_of_bookmarks = 0;
@@ -1418,14 +1426,24 @@ open_file(char* path, char* password)
     {
       if(strcmp(keys[i], BM_PAGE_ENTRY) && strcmp(keys[i], BM_PAGE_OFFSET))
       {
+        int next = Zathura.Bookmarks.number_of_bookmarks;
         Zathura.Bookmarks.bookmarks = realloc(Zathura.Bookmarks.bookmarks,
-            (Zathura.Bookmarks.number_of_bookmarks + 1) * sizeof(Bookmark));
+                                              (next + 1) * sizeof(Bookmark));
 
-        Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].id   = g_strdup(keys[i]);
-        Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].page =
-          g_key_file_get_integer(Zathura.Bookmarks.data, file, keys[i], NULL);
+        Zathura.Bookmarks.bookmarks[next].id = g_strdup(keys[i]);
+        gsize length = 3;
+        gint* location = g_key_file_get_integer_list(Zathura.Bookmarks.data,
+                                                     file, keys[i], &length,
+                                                     NULL);
+        if(location)
+        {
+          Zathura.Bookmarks.bookmarks[next].page = location[0];
+          Zathura.Bookmarks.bookmarks[next].position.x = location[1];
+          Zathura.Bookmarks.bookmarks[next].position.y = location[2];
+          g_free(location);
 
-        Zathura.Bookmarks.number_of_bookmarks++;
+          Zathura.Bookmarks.number_of_bookmarks++;
+        }
       }
     }
 
@@ -1561,7 +1579,7 @@ read_bookmarks_file(void)
   if(!g_file_test(Zathura.Bookmarks.file, G_FILE_TEST_IS_REGULAR))
   {
     /* file does not exist */
-    g_file_set_contents(Zathura.Bookmarks.file, "# Zathura bookmarks\n", -1, NULL);
+    g_file_set_contents(Zathura.Bookmarks.file, "# Zathura bookmarks (escherdragon fork)\n", -1, NULL);
   }
 
   GError* error = NULL;
@@ -3089,21 +3107,24 @@ cmd_bookmark(int argc, char** argv)
   }
 
   /* check for existing bookmark to overwrite */
-  for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+  int next = Zathura.Bookmarks.number_of_bookmarks;
+  for(i = 0; i < next; i++)
   {
     if(!strcmp(id->str, Zathura.Bookmarks.bookmarks[i].id))
     {
       Zathura.Bookmarks.bookmarks[i].page = Zathura.PDF.page_number;
+      save_page_position(&Zathura.Bookmarks.bookmarks[i].position, 0);
       return TRUE;
     }
   }
 
   /* add new bookmark */
   Zathura.Bookmarks.bookmarks = realloc(Zathura.Bookmarks.bookmarks,
-      (Zathura.Bookmarks.number_of_bookmarks + 1) * sizeof(Bookmark));
+                                        (next + 1) * sizeof(Bookmark));
 
-  Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].id   = g_strdup(id->str);
-  Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].page = Zathura.PDF.page_number;
+  Zathura.Bookmarks.bookmarks[next].id   = g_strdup(id->str);
+  Zathura.Bookmarks.bookmarks[next].page = Zathura.PDF.page_number;
+  save_page_position(&Zathura.Bookmarks.bookmarks[next].position, 0);
   Zathura.Bookmarks.number_of_bookmarks++;
 
   return TRUE;
@@ -3133,6 +3154,7 @@ cmd_open_bookmark(int argc, char** argv)
     if(!strcmp(id->str, Zathura.Bookmarks.bookmarks[i].id))
     {
       set_page(Zathura.Bookmarks.bookmarks[i].page);
+      restore_page_position(&Zathura.Bookmarks.bookmarks[i].position);
       return TRUE;
     }
   }
