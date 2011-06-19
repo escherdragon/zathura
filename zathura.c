@@ -203,6 +203,8 @@ typedef struct
 {
   char* id;
   int page;
+  int scale;
+  PagePosition position;
 } Bookmark;
 
 /* zathura */
@@ -394,6 +396,7 @@ void set_page(int);
 void switch_view(GtkWidget*);
 void save_page_position(PagePosition*, int);
 void restore_page_position(PagePosition*);
+void position_bookmark(Bookmark*, const gchar*, const gchar*);
 GtkEventBox* create_completion_row(GtkBox*, char*, char*, gboolean);
 gchar* fix_path(const gchar*);
 gchar* path_from_env(const gchar*);
@@ -1080,12 +1083,28 @@ close_file(gboolean keep_monitor)
 
     /* save bookmarks */
     int i;
+    Bookmark bm;
+    gsize location_length = 3;
+    gint* location = malloc(sizeof(gint) * location_length);
+    char* master_section, *positions_section;
     for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
     {
-      g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-          Zathura.Bookmarks.bookmarks[i].id, Zathura.Bookmarks.bookmarks[i].page);
-      g_free(Zathura.Bookmarks.bookmarks[i].id);
+      bm = Zathura.Bookmarks.bookmarks[i];
+
+      master_section = Zathura.PDF.file;
+      g_key_file_set_integer(Zathura.Bookmarks.data, master_section,
+                             bm.id, bm.page);
+
+      positions_section = g_strdup_printf("%s#positions", master_section);
+      location[0] = bm.scale;
+      location[1] = bm.position.x;
+      location[2] = bm.position.y;
+      g_key_file_set_integer_list(Zathura.Bookmarks.data, positions_section,
+                                  bm.id, location, location_length);
+      g_free(bm.id);
+      g_free(positions_section);
     }
+    free(location);
     free(Zathura.Bookmarks.bookmarks);
     Zathura.Bookmarks.bookmarks = NULL;
     Zathura.Bookmarks.number_of_bookmarks = 0;
@@ -1413,17 +1432,22 @@ open_file(char* path, char* password)
     gsize i              = 0;
     gsize number_of_keys = 0;
     char** keys          = g_key_file_get_keys(Zathura.Bookmarks.data, file, &number_of_keys, NULL);
+    Bookmark* bmarks;
 
     for(i = 0; i < number_of_keys; i++)
     {
       if(strcmp(keys[i], BM_PAGE_ENTRY) && strcmp(keys[i], BM_PAGE_OFFSET))
       {
+        int next = Zathura.Bookmarks.number_of_bookmarks;
         Zathura.Bookmarks.bookmarks = realloc(Zathura.Bookmarks.bookmarks,
-            (Zathura.Bookmarks.number_of_bookmarks + 1) * sizeof(Bookmark));
+            (next + 1) * sizeof(Bookmark));
 
-        Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].id   = g_strdup(keys[i]);
-        Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].page =
+        bmarks = Zathura.Bookmarks.bookmarks;
+        bmarks[next].id   = g_strdup(keys[i]);
+        bmarks[next].page =
           g_key_file_get_integer(Zathura.Bookmarks.data, file, keys[i], NULL);
+
+        position_bookmark(&bmarks[next], file, keys[i]);
 
         Zathura.Bookmarks.number_of_bookmarks++;
       }
@@ -1442,6 +1466,30 @@ open_file(char* path, char* password)
   g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
   isc_abort(NULL);
   return TRUE;
+}
+
+void
+position_bookmark(Bookmark* bmark, const gchar* file, const gchar* key)
+{
+  bmark->scale      = Zathura.PDF.scale;
+  bmark->position.x = 0;
+  bmark->position.y = 0;
+
+  char* section = g_strdup_printf("%s#positions", file);
+  gsize length = 3;
+  if(g_key_file_has_group(Zathura.Bookmarks.data, section))
+  {
+    gint* location = g_key_file_get_integer_list(Zathura.Bookmarks.data,
+                                                 section, key, &length, NULL);
+    if(location)
+    {
+      bmark->scale      = location[0];
+      bmark->position.x = location[1];
+      bmark->position.y = location[2];
+      g_free(location);
+    }
+  }
+  g_free(section);
 }
 
 gboolean
@@ -1561,7 +1609,7 @@ read_bookmarks_file(void)
   if(!g_file_test(Zathura.Bookmarks.file, G_FILE_TEST_IS_REGULAR))
   {
     /* file does not exist */
-    g_file_set_contents(Zathura.Bookmarks.file, "# Zathura bookmarks\n", -1, NULL);
+    g_file_set_contents(Zathura.Bookmarks.file, "# Zathura bookmarks (escherdragon fork)\n", -1, NULL);
   }
 
   GError* error = NULL;
@@ -3089,21 +3137,26 @@ cmd_bookmark(int argc, char** argv)
   }
 
   /* check for existing bookmark to overwrite */
-  for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+  int next = Zathura.Bookmarks.number_of_bookmarks;
+  for(i = 0; i < next; i++)
   {
     if(!strcmp(id->str, Zathura.Bookmarks.bookmarks[i].id))
     {
       Zathura.Bookmarks.bookmarks[i].page = Zathura.PDF.page_number;
+      Zathura.Bookmarks.bookmarks[i].scale = Zathura.PDF.scale;
+      save_page_position(&Zathura.Bookmarks.bookmarks[i].position, 0);
       return TRUE;
     }
   }
 
   /* add new bookmark */
   Zathura.Bookmarks.bookmarks = realloc(Zathura.Bookmarks.bookmarks,
-      (Zathura.Bookmarks.number_of_bookmarks + 1) * sizeof(Bookmark));
+      (next + 1) * sizeof(Bookmark));
 
-  Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].id   = g_strdup(id->str);
-  Zathura.Bookmarks.bookmarks[Zathura.Bookmarks.number_of_bookmarks].page = Zathura.PDF.page_number;
+  Zathura.Bookmarks.bookmarks[next].id    = g_strdup(id->str);
+  Zathura.Bookmarks.bookmarks[next].page  = Zathura.PDF.page_number;
+  Zathura.Bookmarks.bookmarks[next].scale = Zathura.PDF.scale;
+  save_page_position(&Zathura.Bookmarks.bookmarks[next].position, 0);
   Zathura.Bookmarks.number_of_bookmarks++;
 
   return TRUE;
@@ -3128,11 +3181,21 @@ cmd_open_bookmark(int argc, char** argv)
   }
 
   /* find bookmark */
+  Bookmark* bmarks = Zathura.Bookmarks.bookmarks;
   for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
   {
-    if(!strcmp(id->str, Zathura.Bookmarks.bookmarks[i].id))
+    if(!strcmp(id->str, bmarks[i].id))
     {
-      set_page(Zathura.Bookmarks.bookmarks[i].page);
+      set_page(bmarks[i].page);
+      if(Zathura.PDF.scale != bmarks[i].scale)
+      {
+        Zathura.Global.adjust_mode = ADJUST_NONE;
+        Zathura.PDF.scale = bmarks[i].scale;
+        Zathura.Search.draw = TRUE;
+        draw(Zathura.PDF.page_number);
+        update_status();
+      }
+      restore_page_position(&bmarks[i].position);
       return TRUE;
     }
   }
