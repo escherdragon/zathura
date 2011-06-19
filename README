@@ -1,6 +1,31 @@
 zathura - pdf viewer
 --------------------
-zathura is a pdf viewer based on the poppler pdf rendering library
+zathura is a pdf viewer based on the poppler pdf rendering library.
+
+This is the "escherdragon" fork of zathura. It contains several improvements
+compared with the original:
+
+    * Real viewport-wise pagination: the original zathura allows to move across
+      a document in chunks that may be only of two sizes: whole pages and half
+      pages. This fork takes into consideration the size of the current viewport
+      (i.e. the length of the currently displayed fragment of the page), and
+      allows to scroll it in fragments of that size.
+
+    * Markers and bookmarks record not only the page they were on when set, but
+      also the exact position they were at. Additionally, bookmarks keep record
+      of the scale of the page, so they are restored exactly as they looked like
+      when set.
+
+    * Slightly improved keybindings (e.g. "b" and Backspace for paging back) and
+      mouse navigation in fullscreen mode.
+
+    * "Page flipping": when in fullscreen mode, press "e" to rotate the current
+      viewport 180 degrees. This is *very* useful when reading on a laptop while
+      lying in bed ;-)
+
+I've submitted patches for most of these features to the author of zathura, so
+maybe it's only a matter of time for them to become available in the official
+version (or maybe not).
 
 Requirements
 ------------
