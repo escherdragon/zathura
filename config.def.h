@@ -105,7 +105,9 @@ Shortcut shortcuts[] = {
   {0,                  GDK_i,             sc_change_mode,       NORMAL,     { INSERT } },
   {0,                  GDK_v,             sc_change_mode,       NORMAL,     { VISUAL } },
   {0,                  GDK_m,             sc_change_mode,       NORMAL,     { ADD_MARKER } },
+  {0,                  GDK_M,             sc_focus_inputbar,    NORMAL,     { .data = ":bmark " } },
   {0,                  GDK_apostrophe,    sc_change_mode,       NORMAL,     { EVAL_MARKER } },
+  {0,                  GDK_quotedbl,      sc_focus_inputbar,    NORMAL,     { .data = ":blist " } },
   {0,                  GDK_slash,         sc_focus_inputbar,    NORMAL,     { .data = "/" } },
   {GDK_SHIFT_MASK,     GDK_slash,         sc_focus_inputbar,    NORMAL,     { .data = "/" } },
   {GDK_SHIFT_MASK,     GDK_question,      sc_focus_inputbar,    NORMAL,     { .data = "?" } },
@@ -196,7 +198,7 @@ MouseScrollEvent mouse_scroll_events[] = {
 Command commands[] = {
   /* command,   abbreviation,   function,            completion,   description  */
   {"blist",     0,              cmd_open_bookmark,   cc_bookmark,  "List and open bookmark" },
-  {"bmark",     "b",            cmd_bookmark,        0,            "Bookmark current page" },
+  {"bmark",     "b",            cmd_bookmark,        0,            "Bookmark current position" },
   {"close",     "c",            cmd_close,           0,            "Close current file" },
   {"coffset",   0,              cmd_correct_offset,  0,            "Correct page offset" },
   {"delbmark",  0,              cmd_delete_bookmark, cc_bookmark,  "Bookmark current page" },
