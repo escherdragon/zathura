@@ -1086,24 +1086,28 @@ close_file(gboolean keep_monitor)
     Bookmark bm;
     gsize location_length = 3;
     gint* location = malloc(sizeof(gint) * location_length);
-    char* master_section, *positions_section;
+
+    char* master_section = g_strdup(Zathura.PDF.file);
+    char* positions_section = g_strdup_printf("%s#positions", master_section);
+
     for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
     {
       bm = Zathura.Bookmarks.bookmarks[i];
 
-      master_section = Zathura.PDF.file;
       g_key_file_set_integer(Zathura.Bookmarks.data, master_section,
                              bm.id, bm.page);
 
-      positions_section = g_strdup_printf("%s#positions", master_section);
       location[0] = bm.scale;
       location[1] = bm.position.x;
       location[2] = bm.position.y;
       g_key_file_set_integer_list(Zathura.Bookmarks.data, positions_section,
                                   bm.id, location, location_length);
       g_free(bm.id);
-      g_free(positions_section);
     }
+
+    g_free(positions_section);
+    g_free(master_section);
+
     free(location);
     free(Zathura.Bookmarks.bookmarks);
     Zathura.Bookmarks.bookmarks = NULL;
