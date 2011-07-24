@@ -388,6 +388,8 @@ void open_uri(char*);
 void out_of_memory(void) NORETURN;
 void update_status(void);
 void read_bookmarks_file(void);
+void write_bookmarks_file(void);
+void free_bookmarks(void);
 void read_configuration_file(const char*);
 void read_configuration(void);
 void recalc_rectangle(int, PopplerRectangle*);
@@ -401,6 +403,7 @@ GtkEventBox* create_completion_row(GtkBox*, char*, char*, gboolean);
 gchar* fix_path(const gchar*);
 gchar* path_from_env(const gchar*);
 gchar* get_home_dir(void);
+gboolean is_reserved_bm_name(const char *);
 
 Completion* completion_init(void);
 CompletionGroup* completion_group_create(char*);
@@ -639,6 +642,18 @@ init_bookmarks(void)
 
   Zathura.Bookmarks.file = g_build_filename(Zathura.Config.data_dir, BOOKMARK_FILE, NULL);
   read_bookmarks_file();
+}
+
+gboolean
+is_reserved_bm_name(const char *bm_name)
+{
+  int i;
+
+  for(i = 0; i < BM_MAX; i++)
+    if(strcmp(bm_reserved_names[i], bm_name) == 0)
+      return TRUE;
+
+  return FALSE;
 }
 
 void
@@ -1074,49 +1089,22 @@ close_file(gboolean keep_monitor)
     {
       /* set current page */
       g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-          BM_PAGE_ENTRY, Zathura.PDF.page_number);
+          bm_reserved_names[BM_PAGE_ENTRY], Zathura.PDF.page_number);
 
       /* set page offset */
       g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
-          BM_PAGE_OFFSET, Zathura.PDF.page_offset);
+          bm_reserved_names[BM_PAGE_OFFSET], Zathura.PDF.page_offset);
     }
 
-    /* save bookmarks */
-    int i;
-    Bookmark bm;
-    gsize location_length = 3;
-    gint* location = malloc(sizeof(gint) * location_length);
-
-    char* master_section = g_strdup(Zathura.PDF.file);
-    char* positions_section = g_strdup_printf("%s#positions", master_section);
-
-    for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+    if (save_zoom_level)
     {
-      bm = Zathura.Bookmarks.bookmarks[i];
-
-      g_key_file_set_integer(Zathura.Bookmarks.data, master_section,
-                             bm.id, bm.page);
-
-      location[0] = bm.scale;
-      location[1] = bm.position.x;
-      location[2] = bm.position.y;
-      g_key_file_set_integer_list(Zathura.Bookmarks.data, positions_section,
-                                  bm.id, location, location_length);
-      g_free(bm.id);
+      /* set zoom level */
+      g_key_file_set_integer(Zathura.Bookmarks.data, Zathura.PDF.file,
+          bm_reserved_names[BM_PAGE_SCALE], Zathura.PDF.scale);
     }
 
-    g_free(positions_section);
-    g_free(master_section);
-
-    free(location);
-    free(Zathura.Bookmarks.bookmarks);
-    Zathura.Bookmarks.bookmarks = NULL;
-    Zathura.Bookmarks.number_of_bookmarks = 0;
-
-    /* convert file and save it */
-    gchar* bookmarks = g_key_file_to_data(Zathura.Bookmarks.data, NULL, NULL);
-    g_file_set_contents(Zathura.Bookmarks.file, bookmarks, -1, NULL);
-    g_free(bookmarks);
+    write_bookmarks_file();
+    free_bookmarks();
   }
 
   /* inotify */
@@ -1423,14 +1411,31 @@ open_file(char* path, char* password)
   if(Zathura.Bookmarks.data && g_key_file_has_group(Zathura.Bookmarks.data, file))
   {
     /* get last opened page */
-    if(save_position && g_key_file_has_key(Zathura.Bookmarks.data, file, BM_PAGE_ENTRY, NULL))
-      start_page = g_key_file_get_integer(Zathura.Bookmarks.data, file, BM_PAGE_ENTRY, NULL);
+    if(save_position && g_key_file_has_key(Zathura.Bookmarks.data, file,
+        bm_reserved_names[BM_PAGE_ENTRY], NULL))
+      start_page = g_key_file_get_integer(Zathura.Bookmarks.data, file,
+          bm_reserved_names[BM_PAGE_ENTRY], NULL);
 
     /* get page offset */
-    if(save_position && g_key_file_has_key(Zathura.Bookmarks.data, file, BM_PAGE_OFFSET, NULL))
-      Zathura.PDF.page_offset = g_key_file_get_integer(Zathura.Bookmarks.data, file, BM_PAGE_OFFSET, NULL);
+    if(save_position && g_key_file_has_key(Zathura.Bookmarks.data, file,
+        bm_reserved_names[BM_PAGE_OFFSET], NULL))
+      Zathura.PDF.page_offset = g_key_file_get_integer(Zathura.Bookmarks.data, file,
+          bm_reserved_names[BM_PAGE_OFFSET], NULL);
     if((Zathura.PDF.page_offset != 0) && (Zathura.PDF.page_offset != GOTO_OFFSET))
       Zathura.PDF.page_offset = GOTO_OFFSET;
+
+    /* get zoom level */
+    if (save_zoom_level && g_key_file_has_key(Zathura.Bookmarks.data, file,
+        bm_reserved_names[BM_PAGE_SCALE], NULL))
+    {
+      Zathura.PDF.scale = g_key_file_get_integer(Zathura.Bookmarks.data, file,
+          bm_reserved_names[BM_PAGE_SCALE], NULL);
+      Zathura.Global.adjust_mode = ADJUST_NONE;
+    }
+    if (Zathura.PDF.scale > zoom_max)
+      Zathura.PDF.scale = zoom_max;
+    if (Zathura.PDF.scale < zoom_min)
+      Zathura.PDF.scale = zoom_min;
 
     /* open and read bookmark file */
     gsize i              = 0;
@@ -1440,7 +1445,7 @@ open_file(char* path, char* password)
 
     for(i = 0; i < number_of_keys; i++)
     {
-      if(strcmp(keys[i], BM_PAGE_ENTRY) && strcmp(keys[i], BM_PAGE_OFFSET))
+      if(!is_reserved_bm_name(keys[i]))
       {
         int next = Zathura.Bookmarks.number_of_bookmarks;
         Zathura.Bookmarks.bookmarks = realloc(Zathura.Bookmarks.bookmarks,
@@ -1540,13 +1545,13 @@ open_stdin(gchar* password)
       return FALSE;
     }
   }
+  close(handle);
 
   if (count != 0)
   {
     gchar* message = g_strdup_printf("Can not read from stdin.");
     notify(ERROR, message);
     g_free(message);
-    close(handle);
     g_unlink(file);
     g_free(file);
     return FALSE;
@@ -1627,6 +1632,56 @@ read_bookmarks_file(void)
 }
 
 void
+write_bookmarks_file(void)
+{
+  if (!Zathura.Bookmarks.data)
+    /* nothing to do */
+    return;
+
+  /* save bookmarks */
+  Bookmark bm;
+  gsize location_length = 3;
+  gint* location = malloc(sizeof(gint) * location_length);
+  char* master_section = g_strdup(Zathura.PDF.file);
+  char* positions_section = g_strdup_printf("%s#positions", master_section);
+
+  for(int i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+  {
+    bm = Zathura.Bookmarks.bookmarks[i];
+
+    g_key_file_set_integer(Zathura.Bookmarks.data, master_section,
+                           bm.id, bm.page);
+
+    location[0] = bm.scale;
+    location[1] = bm.position.x;
+    location[2] = bm.position.y;
+    g_key_file_set_integer_list(Zathura.Bookmarks.data, positions_section,
+                                bm.id, location, location_length);
+  }
+
+  g_free(positions_section);
+  g_free(master_section);
+  free(location);
+
+  /* convert file and save it */
+  gchar* bookmarks = g_key_file_to_data(Zathura.Bookmarks.data, NULL, NULL);
+  g_file_set_contents(Zathura.Bookmarks.file, bookmarks, -1, NULL);
+  g_free(bookmarks);
+}
+
+void
+free_bookmarks(void)
+{
+  for(int i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
+  {
+    g_free(Zathura.Bookmarks.bookmarks[i].id);
+  }
+  free(Zathura.Bookmarks.bookmarks);
+  Zathura.Bookmarks.bookmarks = NULL;
+  Zathura.Bookmarks.number_of_bookmarks = 0;
+}
+
+void
 read_configuration_file(const char* rcfile)
 {
   if(!rcfile)
@@ -1647,13 +1702,25 @@ read_configuration_file(const char* rcfile)
       if(!strlen(lines[i]))
         continue;
 
-      gchar **tokens = g_strsplit(lines[i], " ", -1);
-      int     length = g_strv_length(tokens);
+      gchar **pre_tokens = g_strsplit_set(lines[i], "\t ", -1);
+      int     pre_length = g_strv_length(pre_tokens);
+
+      gchar** tokens = g_malloc0(sizeof(gchar*) * (pre_length + 1));
+      gchar** tokp =   tokens;
+      int     length = 0;
+      for (int i = 0; i != pre_length; ++i) {
+        if (strlen(pre_tokens[i])) {
+          *tokp++ = pre_tokens[i];
+          ++length;
+        }
+      }
 
       if(!strcmp(tokens[0], "set"))
         cmd_set(length - 1, tokens + 1);
       else if(!strcmp(tokens[0], "map"))
         cmd_map(length - 1, tokens + 1);
+
+      g_free(tokens);
     }
 
     g_strfreev(lines);
@@ -1866,6 +1933,8 @@ void
 switch_view(GtkWidget* widget)
 {
   GtkWidget* child = gtk_bin_get_child(GTK_BIN(Zathura.UI.viewport));
+  if(child == widget)
+    return;
   if(child)
   {
     g_object_ref(child);
@@ -1972,11 +2041,14 @@ search(void* parameter)
   static int direction;
   static int next_page = 0;
   gchar* old_query = NULL;
-  int page_counter;
   GList* results = NULL;
 
   if(argument->n != NO_SEARCH)
   {
+    /* search document */
+    if(argument->n)
+      direction = (argument->n == BACKWARD) ? -1 : 1;
+
     if(argument->data)
     {
       if(search_item)
@@ -2006,10 +2078,6 @@ search(void* parameter)
       Zathura.Search.results = NULL;
     }
 
-    /* search document */
-    if(argument->n)
-      direction = (argument->n == BACKWARD) ? -1 : 1;
-
     Zathura.Search.query = g_strdup(search_item);
 
     int number_of_pages = Zathura.PDF.number_of_pages;
@@ -2017,7 +2085,7 @@ search(void* parameter)
 
     g_static_mutex_unlock(&(Zathura.Lock.pdf_obj_lock));
 
-    page_counter = (g_strcmp0(old_query,search_item) == 0) ? 1 : 0;
+    int page_counter = (g_strcmp0(old_query,search_item) == 0) ? 1 : 0;
     for( ; page_counter <= number_of_pages; page_counter++)
     {
       g_static_mutex_lock(&(Zathura.Lock.search_lock));
@@ -2399,7 +2467,8 @@ sc_scroll(Argument* argument)
   else
     new_value = (value + scroll_step) > max ? max : (value + scroll_step);
 
-  Zathura.State.scroll_percentage = max == 0 ? 0 : (new_value*100/max);
+  if( !((argument->n == LEFT) || (argument->n == RIGHT)) )
+    Zathura.State.scroll_percentage = max == 0 ? 0 : (new_value*100/max);
 
   if(smooth_scrolling && !ss)
   {
@@ -2530,7 +2599,7 @@ sc_navigate_index(Argument* argument)
   {
     case UP:
       if(!gtk_tree_path_prev(path))
-        is_valid_path = gtk_tree_path_up(path);
+        is_valid_path = (gtk_tree_path_get_depth(path) > 1) && gtk_tree_path_up(path) ;
       else /* row above */
       {
         while(gtk_tree_view_row_expanded(treeview, path)) {
@@ -2683,6 +2752,7 @@ sc_toggle_fullscreen(Argument* argument)
     Zathura.Global.mode = NORMAL;
     fs = TRUE;
   }
+  isc_abort(NULL);
 }
 
 void
@@ -3140,6 +3210,23 @@ cmd_bookmark(int argc, char** argv)
     id = g_string_append(id, argv[i]);
   }
 
+  if(strlen(id->str) == 0)
+  {
+    notify(WARNING, "Can't set bookmark: bookmark name is empty");
+    g_string_free(id, TRUE);
+    return FALSE;
+  }
+
+  if(is_reserved_bm_name(id->str))
+  {
+    notify(WARNING, "Can't set bookmark: reserved bookmark name");
+    g_string_free(id, TRUE);
+    return FALSE;
+  }
+
+  /* reload the bookmark file */
+  read_bookmarks_file();
+
   /* check for existing bookmark to overwrite */
   int next = Zathura.Bookmarks.number_of_bookmarks;
   for(i = 0; i < next; i++)
@@ -3149,6 +3236,7 @@ cmd_bookmark(int argc, char** argv)
       Zathura.Bookmarks.bookmarks[i].page = Zathura.PDF.page_number;
       Zathura.Bookmarks.bookmarks[i].scale = Zathura.PDF.scale;
       save_page_position(&Zathura.Bookmarks.bookmarks[i].position, 0);
+      g_string_free(id, TRUE);
       return TRUE;
     }
   }
@@ -3163,6 +3251,10 @@ cmd_bookmark(int argc, char** argv)
   save_page_position(&Zathura.Bookmarks.bookmarks[next].position, 0);
   Zathura.Bookmarks.number_of_bookmarks++;
 
+  /* write the bookmark file */
+  write_bookmarks_file();
+
+  g_string_free(id, TRUE);
   return TRUE;
 }
 
@@ -3200,11 +3292,13 @@ cmd_open_bookmark(int argc, char** argv)
         update_status();
       }
       restore_page_position(&bmarks[i].position);
+      g_string_free(id, TRUE);
       return TRUE;
     }
   }
 
   notify(WARNING, "No matching bookmark found");
+  g_string_free(id, TRUE);
   return FALSE;
 }
 
@@ -3252,6 +3346,9 @@ cmd_delete_bookmark(int argc, char** argv)
     id = g_string_append(id, argv[i]);
   }
 
+  /* reload bookmark file */
+  read_bookmarks_file();
+
   /* check for bookmark to delete */
   for(i = 0; i < Zathura.Bookmarks.number_of_bookmarks; i++)
   {
@@ -3268,11 +3365,16 @@ cmd_delete_bookmark(int argc, char** argv)
           Zathura.Bookmarks.number_of_bookmarks * sizeof(Bookmark));
 
       Zathura.Bookmarks.number_of_bookmarks--;
+      g_string_free(id, TRUE);
+
+      /* write bookmark file */
+      write_bookmarks_file();
 
       return TRUE;
     }
   }
 
+  g_string_free(id, TRUE);
   return TRUE;
 }
 
@@ -3927,6 +4029,7 @@ cc_open(char* input)
     gtk_entry_set_text(Zathura.UI.inputbar, file);
     gtk_editable_set_position(GTK_EDITABLE(Zathura.UI.inputbar), -1);
     g_free(file);
+    completion_free(completion);
     return NULL;
   }
 
@@ -3984,6 +4087,7 @@ cc_open(char* input)
   {
     g_free(path);
     g_free(file);
+    completion_free(completion);
     return NULL;
   }
 
@@ -4134,6 +4238,24 @@ bcmd_goto(char* buffer, Argument* argument)
   update_status();
 }
 
+gboolean
+try_goto(const char* buffer)
+{
+    char* endptr = NULL;
+    long page_number = strtol(buffer, &endptr, 10) - 1;
+    if(*endptr)
+      /* conversion error */
+      return FALSE;
+    else
+    {
+      /* behave like vim: <= 1 => first line, >= #lines => last line */
+      page_number = MAX(0, MIN(Zathura.PDF.number_of_pages - 1, page_number));
+      set_page(page_number);
+      update_status();
+      return TRUE;
+    }
+}
+
 void
 bcmd_scroll(char* buffer, Argument* argument)
 {
@@ -4220,7 +4342,7 @@ cb_destroy(GtkWidget* widget, gpointer data)
 
   /* clean up bookmarks */
   g_free(Zathura.Bookmarks.file);
-    if (Zathura.Bookmarks.data)
+  if (Zathura.Bookmarks.data)
     g_key_file_free(Zathura.Bookmarks.data);
 
   /* destroy mutexes */
@@ -4396,6 +4518,8 @@ cb_inputbar_activate(GtkEntry* entry, gpointer data)
 {
   gchar  *input  = gtk_editable_get_chars(GTK_EDITABLE(entry), 1, -1);
   gchar **tokens = g_strsplit(input, " ", -1);
+  g_free(input);
+
   gchar *command = tokens[0];
   int     length = g_strv_length(tokens);
   int          i = 0;
@@ -4406,6 +4530,7 @@ cb_inputbar_activate(GtkEntry* entry, gpointer data)
   if(length < 1)
   {
     isc_abort(NULL);
+    g_strfreev(tokens);
     return FALSE;
   }
 
@@ -4423,12 +4548,14 @@ cb_inputbar_activate(GtkEntry* entry, gpointer data)
       if(special_commands[i].always == 1)
       {
         isc_abort(NULL);
+        g_strfreev(tokens);
         return TRUE;
       }
 
       retv = special_commands[i].function(input, &(special_commands[i].argument));
       if(retv) isc_abort(NULL);
       gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
+      g_strfreev(tokens);
       return TRUE;
     }
   }
@@ -4448,13 +4575,17 @@ cb_inputbar_activate(GtkEntry* entry, gpointer data)
   if(retv)
     isc_abort(NULL);
 
-  if(!succ)
-    notify(ERROR, "Unknown command.");
+  if(!succ) {
+      /* it maybe a goto command */
+    if(!try_goto(command))
+        notify(ERROR, "Unknown command.");
+  }
 
   Argument arg = { HIDE };
   isc_completion(&arg);
   gtk_widget_grab_focus(GTK_WIDGET(Zathura.UI.view));
 
+  g_strfreev(tokens);
   return TRUE;
 }
 

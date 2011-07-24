@@ -27,9 +27,23 @@ static const char CONFIG_DIR[]    = "~/.config/zathura";
 static const char DATA_DIR[]      = "~/.local/share/zathura";
 
 /* bookmarks */
-static const char BM_PAGE_ENTRY[]  = "page";
-static const char BM_PAGE_OFFSET[] = "offset";
+enum
+{
+  BM_PAGE_ENTRY = 0,
+  BM_PAGE_OFFSET,
+  BM_PAGE_SCALE,
+  BM_MAX,
+};
+
+static const char *bm_reserved_names[] =
+{
+  [BM_PAGE_ENTRY]  = "page",
+  [BM_PAGE_OFFSET] = "offset",
+  [BM_PAGE_SCALE]  = "scale",
+};
+
 int save_position = 1;
+int save_zoom_level = 1;
 
 /* look */
 char* font                   = "dejavu sans mono 8";
@@ -201,7 +215,7 @@ Command commands[] = {
   {"bmark",     "b",            cmd_bookmark,        0,            "Bookmark current position" },
   {"close",     "c",            cmd_close,           0,            "Close current file" },
   {"coffset",   0,              cmd_correct_offset,  0,            "Correct page offset" },
-  {"delbmark",  0,              cmd_delete_bookmark, cc_bookmark,  "Bookmark current page" },
+  {"delbmark",  0,              cmd_delete_bookmark, cc_bookmark,  "Delete bookmark" },
   {"export",    "e",            cmd_export,          cc_export,    "Export images or attached files" },
   {"info",      "i",            cmd_info,            0,            "Show information about the document" },
   {"map",       "m",            cmd_map,             0,            "Map keybinding to a function" },
@@ -268,6 +282,7 @@ Setting settings[] = {
   {"recolor_darkcolor",      &(recolor_darkcolor),               's',   FALSE,   TRUE,    "Recoloring (dark color)"},
   {"recolor_lightcolor",     &(recolor_lightcolor),              's',   FALSE,   TRUE,    "Recoloring (light color)"},
   {"save_position",          &(save_position),                   'b',   FALSE,   FALSE,   "Save position in file on quit and restore it on open"},
+  {"save_zoom_level",        &(save_zoom_level),                 'b',   FALSE,   FALSE,   "Save zoom level on quit and restore it on open"},
   {"scroll_step",            &(scroll_step),                     'f',   FALSE,   FALSE,   "Scroll step"},
   {"scroll_wrap",            &(scroll_wrap),                     'b',   FALSE,   FALSE,   "Wrap scolling at last page"},
   {"scrollbars",             &(show_scrollbars),                 'b',   FALSE,   TRUE,    "Show scrollbars"},
@@ -325,6 +340,7 @@ ArgumentName argument_names[] = {
   {"insert",      INSERT},
   {"left",        LEFT},
   {"next",        NEXT},
+  {"noadjust",    ADJUST_NONE},
   {"original",    ZOOM_ORIGINAL},
   {"out",         ZOOM_OUT},
   {"previous",    PREVIOUS},
