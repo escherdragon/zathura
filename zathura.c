@@ -422,6 +422,7 @@ void sc_change_mode(Argument*);
 void sc_focus_inputbar(Argument*);
 void sc_follow(Argument*);
 void sc_navigate(Argument*);
+void sc_paginate(Argument*);
 void sc_recolor(Argument*);
 void sc_reload(Argument*);
 void sc_rotate(Argument*);
@@ -2343,6 +2344,14 @@ sc_navigate(Argument* argument)
 
   set_page(new_page);
   update_status();
+}
+
+void sc_paginate(Argument* argument)
+{
+  PagePosition point = { 0, 0 };
+  save_page_position(&point, 0);
+  sc_navigate(argument);
+  restore_page_position(&point);
 }
 
 void
