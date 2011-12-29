@@ -422,6 +422,7 @@ void sc_change_mode(Argument*);
 void sc_focus_inputbar(Argument*);
 void sc_follow(Argument*);
 void sc_navigate(Argument*);
+void sc_paginate(Argument*);
 void sc_recolor(Argument*);
 void sc_reload(Argument*);
 void sc_rotate(Argument*);
@@ -2345,6 +2346,14 @@ sc_navigate(Argument* argument)
   update_status();
 }
 
+void sc_paginate(Argument* argument)
+{
+  PagePosition point = { 0, 0 };
+  save_page_position(&point, 0);
+  sc_navigate(argument);
+  restore_page_position(&point);
+}
+
 void
 sc_recolor(Argument* argument)
 {
@@ -2728,9 +2737,8 @@ sc_toggle_inputbar(Argument* argument)
 void
 sc_toggle_fullscreen(Argument* argument)
 {
-  static gboolean fs = TRUE;
-
-  if(fs)
+  int mode = 0;
+  if(Zathura.Global.mode != FULLSCREEN)
   {
     gtk_window_fullscreen(GTK_WINDOW(Zathura.UI.window));
     gtk_widget_hide(GTK_WIDGET(Zathura.UI.inputbar));
@@ -2740,8 +2748,7 @@ sc_toggle_fullscreen(Argument* argument)
     arg.n = ADJUST_BESTFIT;
     sc_adjust_window(&arg);
 
-    Zathura.Global.mode = FULLSCREEN;
-    fs = FALSE;
+    mode = FULLSCREEN;
   }
   else
   {
@@ -2749,10 +2756,10 @@ sc_toggle_fullscreen(Argument* argument)
     gtk_widget_show(GTK_WIDGET(Zathura.UI.inputbar));
     gtk_widget_show(GTK_WIDGET(Zathura.UI.statusbar));
 
-    Zathura.Global.mode = NORMAL;
-    fs = TRUE;
+    mode = NORMAL;
   }
   isc_abort(NULL);
+  Zathura.Global.mode = mode;
 }
 
 void
